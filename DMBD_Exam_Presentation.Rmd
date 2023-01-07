@@ -1,0 +1,979 @@
+---
+title: "Evoluzione del campionato NBA dal 1950 al 2018"
+author: "Gabriele Omari"
+output:
+  ioslides_presentation:
+    transition: slower
+    incremental: true
+    smaller: true
+    df_print: tibble
+    logo: NBA.jpg
+runtime: shiny
+---
+```{r options, echo=FALSE,warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo=FALSE,message=FALSE,warning=FALSE)
+```
+
+```{r packages}
+# markdown
+library(knitr)
+library(rmarkdown)
+
+# tidyverse
+library(purrr)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(stringr)
+library(modelr)
+library(tibble)
+
+# ggplot
+library(ggplot2)
+# library(gganimate)
+
+# htmlwidgets
+library(plotly)
+library(DT)
+library(wordcloud2)
+library(leaflet)
+
+# shiny
+library(shiny)
+# library(shinyjs)
+library(shinyWidgets)
+
+# dati
+library(NBAloveR)
+library(ballr)
+```
+
+## Outline 
+
+ - Obiettivo:
+
+    - analizzare l'evoluzione delle performance di giocatori e squadre della NBA dal 1950 al 2018 
+
+ - Dati:
+
+    - **Basketball Reference** tramite pacchetti R:
+  
+      - **ballr**
+      - **NBAloveR**
+    
+ - Metodologie di analisi
+
+      - Tidyverse
+      - modello di regressione logistica
+      - Shiny Presentation
+
+
+## Indice
+
+1. Introduzione
+
+2. Analisi
+
+3. Dati
+
+4. Analisi a livello di giocatore
+
+5. Analisi a livello di squadra
+
+6. Modello per prevedere le percentuali di partite vinte su partite giocate per squadra per la stagione 2017-2018
+
+# Introduzione 
+
+## Mappa interattiva
+
+```{r interactive_map}
+usa_cities<-maps::us.cities
+
+canada_cities<-maps::canada.cities
+
+cities<-c("Atlanta GA","Boston MA","West New York NY","Charlotte NC","Chicago IL","Cleveland OH","Dallas TX","Denver CO","Detroit MI","San Francisco CA","Houston TX","Indianapolis IN","East Los Angeles CA","Los Angeles CA","Memphis TN","Miami FL","Milwaukee WI","Minneapolis MN","New Orleans LA","New York NY","Oklahoma City OK","Orlando FL","Philadelphia PA","Phoenix AZ","Portland OR","Sacramento CA","San Antonio TX","Toronto ON","Salt Lake City UT","WASHINGTON DC")
+
+toronto<-canada_cities %>%
+  filter(name == "Toronto ON")
+
+nba_cities<-usa_cities %>% 
+  bind_rows(toronto)
+
+franchises<-read_csv("franchises.csv",col_names=T)
+
+franchises$Cities<-cities
+
+franchises1<-franchises %>% 
+  left_join(nba_cities,by=c("Cities"="name"))
+
+images<-c("Atlanta Hawks.jpg","Boston Celtics.jpg","Brooklyn Nets.jpg","Charlotte Hornets.jpg","Chicago Bulls.jpg","Cleveland Cavaliers.jpg","Dallas Mavericks.jpg","Denver Nuggets.jpg","Detroit Pistons.jpg","Golden State Warriors.jpg","Houston Rockets.jpg","Indiana Pacers.jpg","Los Angeles Clippers.jpg","Los Angeles Lakers.jpg","Memphis Grizzlies.jpg","Miami Heat.jpg","Milwaukee Bucks.jpg","Minnesota Timberwolves.jpg","New Orleans Pelicans.jpg","New York Knicks.jpg","Oklahoma City Thunder.jpg","Orlando Magic.jpg","Philadelphia 76ers.jpg","Phoenix Suns.jpg","Portland Trailblazers.jpg","Sacramento Kings.jpg","San Antonio Spurs.jpg","Toronto Raptors.jpg","Utah Jazz.jpg","Washington Wizards.jpg")
+
+images_icons<-icons(str_c("images/",images),iconWidth = 20, iconHeight = 20)
+
+leaflet() %>%
+  addTiles()  %>%
+  addMarkers(data=franchises1, ~long, ~lat, icon=images_icons, label=~Franchise)
+```
+
+# L'analisi
+
+## Motivazioni
+
+1. la passione personale per lo sport della pallacanestro e per il campionato NBA.
+
+2. la popolarità nel mondo e il valore economico sempre maggiori della NBA
+
+3. l'impatto sempre più significativo che la **data analytics** sta avendo sulla NBA
+
+## Domande | A livello di giocatore
+
+ - provenienza:
+
+    - da quali università proviene la maggior parte dei giocatori statunitensi ?
+    - da quali stati proviene la maggior parte dei giocatori non statunitensi ?
+
+ - come si è evoluta negli anni la struttura fisica dei giocatori, statunitensi e non ?
+ 
+ - distribuzione dei giocatori non statunitensi nella NBA nel corso degli anni
+ 
+    - in assoluto
+    - per ruolo
+ 
+ - quali sono i giocatori che detengono i record di carriera nelle statistiche di base ?
+    
+## Domande | A livello di squadra
+  
+ - quali sono le squadre più vincenti nella storia del campionato NBA ?
+  
+ - ci sono state delle dinastie nella NBA ?
+  
+ - quale è stata l'evoluzione della pallacanestro nel campionato NBA in questi quasi settant'anni, in termini delle principali statistiche di base medie per partita:
+ 
+      -punti
+      
+      -rimbalzi
+      
+      -assist
+  
+ -  a partire dalla serie storica delle statistiche di base di una squadra, si può predire la probabilità che vinca una partita di **NBA Regular Season** ?
+
+## Inconvenienti 
+
+- I principali problemi a cui si va incontro con un'analisi longitudinale di questo tipo sono:
+
+  - mancanza di dati
+  - inconsistenza dei dati disponibili
+
+- Le cause di queste problematiche sono:
+
+  - le squadre NBA sono cambiate nel corso degli anni
+  
+  - nuove voci statistiche sono state introdotte nel corso degli anni
+  
+  - la tecnologia atta a rilevare le voci statistiche è progredita nel corso del tempo
+
+# Dati
+
+## Pacchetti e funzioni 
+
+- Il sito di riferimento per le analisi statistiche sulla pallacanestro è **Basketball Reference**
+
+- Per reperire i dati mi sono avvalso di due pacchetti del linguaggio R e relativi funzioni/dataset:
+
+  - **ballr**
+    
+    - funzioni
+    
+      - **NBAPerGameStatistics**
+
+  - **NBAloveR**
+    
+    - funzioni
+
+      - **getTeamHistory**
+      
+    - dataset
+
+      - **players**
+      - **franchise**
+  
+## ballr::NBAPerGameStatistics {.flexbox .vcenter}
+
+```{r}
+nbabasicstatistics1<-read_csv("nbabasicstatistics1.csv", col_names=TRUE, guess_max=7000)
+```
+
+```{r}
+nbabasicstatistics1
+```
+
+## NBAloveR::getTeamHistory {.smaller .flexbox .vcenter}
+
+```{r}
+teamshistory<-read_csv("teamshistory.csv",col_names=T,guess_max=7000)
+```
+
+```{r}
+teamshistory
+```
+
+## NBAloveR::franchise {.flexbox .vcenter}
+
+```{r}
+franchises
+```
+
+## NBAloveR::player  {.flexbox .vcenter}
+
+```{r}
+players<-read_csv("players.csv",col_names=T,guess_max=7000)
+```
+
+```{r}
+players
+```
+
+```{r}
+nbastatistics1<-read_csv("nbastatistics1.csv",col_names=T,guess_max=7000)
+```
+
+```{r, eval=FALSE}
+# years
+# years<-tibble(year=seq(1950,2018))
+# 
+# # dead franchises
+# dead_franchises<-c("AND","BLB","CHS","DNN","INO","WSC","STB","WAT","SHE")
+# 
+# atlantic<-c("BOS","BRK","NYK","TOR","PHI")
+# central<-c("CHI","CLE","DET","IND","MIL")
+# southeast<-c("ATL","CHO","MIA","ORL","WAS")
+# 
+# northwest<-c("DEN","MIN","OKC","POR","UTA")
+# pacific<-c("GSW","LAC","LAL","PHO","SAC")
+# southwest<-c("DAL","HOU","MEM","NOP","SAS")
+# 
+# eastern<-c("atlantic","central","southeast")
+# western<-c("northwest","pacific","southwest")
+# 
+# # teams
+# teams<-tibble(team=c("ATL","BOS","BRK","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHO","POR","SAC","SAS","TOR","UTA","WAS"))
+# 
+# less_teams<-tibble(team=c("ATL","BOS","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NYK","OKC","ORL","PHI","PHO","POR","SAC","SAS","TOR","UTA","WAS"))
+# 
+# lower_less_teams<-map(less_teams,str_to_lower)
+```
+
+# Analisi a livello di giocatore
+
+## Da quali università provengono i giocatori statunitensi ?
+
+```{r universities}
+   # titlePanel("Da quali università provengono i giocatori statunitensi ?")
+  sidebarPanel(
+          sliderInput("univ_top",
+                      "scegli il numero massimo di università:",
+          min=5,max=30,step=5,value=30))
+
+mainPanel(
+      renderPlotly({
+              gg<-nbastatistics1 %>% 
+              filter(Prov=="USA",
+              !is.na(PreDraftTeam)) %>% 
+              add_count(name="tot") %>% 
+              group_by(PreDraftTeam) %>% 
+              summarise(n=n(),tot=unique(tot))%>% 
+              ungroup() %>% 
+                mutate(freq=n/tot) %>% 
+              arrange(desc(freq)) %>% 
+              top_n(input$univ_top) %>% 
+              ggplot(aes(reorder(PreDraftTeam,freq),freq))+
+              geom_bar(stat="identity")+
+              coord_flip()+
+              xlab("Università")+
+              ylab("Frequenza Relativa")+
+              scale_y_continuous(breaks=seq(0,0.03,by=0.01))
+          
+              ggplotly(gg)})
+)
+      
+```
+
+## Da quali stati provengono i giocatori non statunitensi ?
+```{r states}
+        # titlePanel("Da quali stati provengono i giocatori non statunitensi ?")
+        sidebarPanel(
+          sliderInput("state_top",
+                      "scegli il numero massimo di paesi:",
+          min=5,max=30,step=5,value=30)
+        )
+
+mainPanel(
+      renderPlotly({
+              gg<-nbastatistics1 %>% 
+              filter(Prov=="Non USA") %>% 
+              add_count(name="tot") %>% 
+              group_by(State) %>% 
+              summarise(n=n(),tot=unique(tot))%>% 
+              ungroup() %>% 
+              mutate(freq=n/tot) %>% 
+              arrange(desc(freq)) %>% 
+              top_n(input$state_top) %>% 
+              ggplot(aes(reorder(State,freq),freq))+
+              geom_bar(stat="identity")+
+              coord_flip()+
+             xlab("Stati")+
+              ylab("Frequenza Relativa")+
+              scale_y_continuous(breaks=seq(0,0.09,by=0.01))
+
+              ggplotly(gg)})
+)
+```
+
+## Altezza e peso dei giocatori
+
+```{r height_weight}
+
+    inputPanel(
+      sliderInput("body_year",
+            "scegli gli anni:",
+            min=1950, max=2018,
+            value=c(1958,2018),
+            sep=""),
+      br(),
+    numericInput("int",
+                 "inserisci l'intervallo tra gli anni:",
+                 min=1,max=10,value=10))
+    
+renderPlotly({
+    
+   gg<- nbastatistics1 %>% 
+    filter(year %in% seq(input$body_year[1],input$body_year[2],by=input$int)) %>% 
+    group_by(year,Prov,pos,player) %>% 
+    summarise(HT=mean(HT,na.rm=TRUE),WT=mean(WT,na.rm=TRUE)) %>% 
+    ungroup() %>% 
+    ggplot(aes(WT,HT,text=player,frame=year,color=pos,shape=Prov))+
+    geom_point()+
+     scale_x_continuous(breaks=seq(60,160,by=5))+
+     scale_y_continuous(breaks=seq(160,230,by=5))
+    
+   ggplotly(gg)
+    })
+```
+
+## Quota di giocatori non statunitensi negli anni
+```{r}
+
+  renderPlotly({
+
+gg<-nbastatistics1 %>% 
+  # filter(year %in% input$year_non_usa) %>% 
+  add_count(year) %>% 
+  group_by(year,Prov) %>% 
+  summarise(rel_n=n(),n=unique(n)) %>% 
+  ungroup() %>% 
+  mutate(freq=rel_n/n) %>% 
+      ggplot(aes(year,freq,fill=Prov))+
+      geom_bar(stat="identity")+
+   xlab("Anni")+
+  ylab("Frequenza Relativa")+
+  scale_x_continuous(breaks=seq(1950,2010,by=5))+
+  scale_y_continuous(breaks=seq(0,1,by=0.1))
+
+ggplotly(gg)
+  })
+# )
+
+```
+
+## Distribuzione per ruolo dei giocatori internazionali nella NBA
+
+```{r}
+sidebarPanel(
+sliderInput("inter_year",
+  "scegli l'anno",
+  min =1950,max=2018,
+  value=2018,
+  sep=""))
+
+mainPanel(
+
+renderPlotly({
+  gg<-nbastatistics1 %>%
+    add_count(year,pos,name="npos") %>% 
+    add_count(year,pos,Prov,name="nprov") %>% 
+    mutate(freq=nprov/npos) %>%
+    filter(year==input$inter_year) %>% 
+    ggplot(aes(x=pos,y=freq,fill=Prov))+
+   geom_bar(position="dodge",stat="identity")+
+    xlab("Ruolo")+
+    ylab("Frequenza Relativa")+
+    scale_y_continuous(breaks=seq(0,1,by=0.1))
+  
+  ggplotly(gg)
+})
+)
+```
+
+## Career leaders
+
+```{r careerpoints}
+sidebarPanel(
+selectizeInput("stat",
+                "scegli la statistica:",
+                choices=c("mp","pts","fg","ast","fga","x2p","x2pa","x3p","x3pa","ft","fta","trb","blk","stl","pf"),
+                selected="pts"))
+
+tabsetPanel(
+  tabPanel(
+    "In assoluto",
+
+renderDataTable({
+  nbastatistics1 %>% 
+    mutate(skey=str_c(player,year-age-1)) %>% 
+    group_by(skey) %>% 
+    summarise(  g=sum(g),
+                mp=sum(mp),
+                pts=sum(pts),
+                ast=sum(ast),
+                fg=sum(fg),
+                fga=sum(fga),
+                `x2p`=sum(`x2p`),
+                `x2pa`=sum(`x2pa`),
+                `x3p`=sum(`x3p`),
+                `x3pa`=sum(`x3pa`),
+                ft=sum(ft),
+                fta=sum(fta),
+                drb=sum(drb),
+                trb=sum(trb),
+                blk=sum(blk),
+                stl=sum(stl),
+                pf=sum(pf),
+                last_year=max(year)) %>% 
+    ungroup() %>%
+    mutate(fgpercent=round(ifelse(is.nan(fg/fga),0,fg/fga),2),
+           `x3ppercent`=round(ifelse(is.nan(`x3p`/`x3pa`),0,`x3p`/`x3pa`),2),
+           `x2ppercent`=round(ifelse(is.nan(`x2p`/`x2pa`),0,`x2p`/`x2pa`),2),
+           ftpercent=round(ifelse(is.nan(ft/fta),0,ft/fta),2),
+           efgpercent=round(ifelse(is.nan((fg+0.5*`x3p`)/fga),0,(fg+0.5*`x3p`)/fga),2),
+           player=str_sub(skey,end=-5)) %>%
+          select(-skey) %>% 
+    select(player,everything()) %>% 
+      arrange(desc(get(input$stat))) %>% 
+      # select(player, !!sym(input$stat), everything()) %>% 
+      top_n(100, wt=get(input$stat)) %>% 
+      datatable(options=list(scrollX=T,
+                           # fixedColumns=T,
+                             pageLength = 5,
+                             lengthChange = FALSE)) %>% 
+      formatStyle(columns = c("player"),
+                  valueColumns=c("last_year"),
+                  target = "row",
+                  backgroundColor = styleEqual(c("2018"),c("yellow"))) %>% 
+     formatStyle(columns=input$stat,
+                  fontWeight="bold")
+})
+    
+  ),
+tabPanel("Per gara",
+  renderDataTable({
+  
+nbastatistics1 %>% 
+    mutate(skey=str_c(player,year-age-1)) %>% 
+    group_by(skey) %>% 
+    summarise(g=sum(g),
+                mp=round(sum(mp)/sum(g),2),
+                pts=round(sum(pts)/sum(g),2),
+                ast=round(sum(ast)/sum(g),2),
+                fg=round(sum(fg)/sum(g),2),
+                fga=round(sum(fga)/sum(g),2),
+                `x2p`=round(sum(`x2p`)/sum(g),2),
+                `x2pa`=round(sum(`x2pa`)/sum(g),2),
+                `x3p`=round(sum(`x3p`)/sum(g),2),
+                `x3pa`=round(sum(`x3pa`)/sum(g),2),
+                ft=round(sum(ft)/sum(g),2),
+                fta=round(sum(fta)/sum(g),2),
+                drb=round(sum(drb)/sum(g),2),
+                trb=round(sum(trb)/sum(g),2),
+                blk=round(sum(blk)/sum(g),2),
+                stl=round(sum(stl)/sum(g),2),
+                pf=round(sum(pf)/sum(g),2),
+                last_year=max(year)) %>%
+    ungroup() %>% 
+   mutate(fgpercent=round(ifelse(is.nan(fg/fga),0,fg/fga),2),
+           `x3ppercent`=round(ifelse(is.nan(`x3p`/`x3pa`),0,`x3p`/`x3pa`),2),
+           `x2ppercent`=round(ifelse(is.nan(`x2p`/`x2pa`),0,`x2p`/`x2pa`),2),
+           ftpercent=round(ifelse(is.nan(ft/fta),0,ft/fta),2),
+           efgpercent=round(ifelse(is.nan((fg+0.5*`x3p`)/fga),0,(fg+0.5*`x3p`)/fga),2),
+           player=str_sub(skey,end=-5)) %>%
+           select(-skey) %>% 
+    select(player,everything()) %>%
+    arrange(desc(get(input$stat))) %>%
+      # select(player,!!sym(input$stat),everything()) %>% 
+      top_n(100,wt=get(input$stat)) %>%
+      datatable(options=list(scrollX=T,
+                           # fixedColumns=T,
+                             pageLength = 5,
+                             lengthChange = FALSE)) %>% 
+      formatStyle(columns = c("player"),
+                  valueColumns=c("last_year"),
+                  target = "row",
+                  backgroundColor = styleEqual(c("2018"),c("yellow"))) %>% 
+     formatStyle(columns=input$stat,
+                  fontWeight="bold")
+})
+)
+)
+
+```
+
+# Analisi a livello di squadra
+
+## Quali sono le squadre più vincenti?
+```{r nba_champs}
+sidebarPanel(
+selectizeInput("champtype",
+               "scegli tra:",choices=c("Division","Conference","Champions"),
+               selected="Division"))
+
+mainPanel(
+renderPlotly({
+  gg<-franchises %>% 
+      ggplot(aes(reorder(Franchise,get(input$champtype)),get(input$champtype)))+
+      geom_bar(stat="identity")+
+      coord_flip()+
+      # ggtitle(str_c("Quale squadra ha vinto più ", input$champtype, " ?"))+
+      xlab("Squadre")+
+      ylab(str_c("numero di ", input$champtype))+
+      theme_minimal()
+
+  ggplotly(gg)
+})
+)
+```
+
+
+
+## Ci sono state delle dinastie nella NBA ?
+```{r nba_champs_history}
+
+gg<-teamshistory %>% 
+  filter(Year %in% seq(1950,2018),Lg=="NBA") %>% 
+  mutate(nba_champion=ifelse(Playoffs!="Won Finals"|is.na(Playoffs),0,1)) %>% 
+  filter(nba_champion==1) %>%
+  ggplot(aes(Year,Franchise,label=Team)) +
+  geom_point()+
+  scale_x_continuous(breaks=seq(1950,2018,by=5))
+
+ggplotly(gg)
+```
+
+## Punti realizzati in media per gara
+```{r teams}
+ # teams
+ teams<-tibble(team=c("ATL","BOS","BRK","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHO","POR","SAC","SAS","TOR","UTA","WAS"))
+```
+
+```{r}
+inputPanel(
+selectizeInput("pts_teams",
+            "scegli le squadre:",
+            choices=append(teams$team,"All",after=0),
+            selected="All"),
+hr(),
+sliderInput("pts_years",
+            "scegli gli anni:",
+            min=1950,max=2018,
+            value=c(1950,2018)))
+
+tabsetPanel(
+  tabPanel(
+    "Punti e tiri",
+    renderPlotly({
+  gg<-nbabasicstatistics1 %>% 
+     # filter(year %in% seq(input$pts_years[1],input$pts_years[2])) %>% 
+     group_by(year,tm) %>% 
+     summarise(gp=unique(gp),
+              pts=sum(pts,na.rm=T)/gp,
+              `x2pa`=sum(`x2pa`,na.rm=T)/gp,
+                `x3pa`=sum(`x3pa`)/gp,
+                fta=sum(fta,na.rm=T)/gp)
+  
+     if (input$pts_teams=="All"){
+       gg<-gg %>% 
+      # summarise(pts=mean(pts,na.rm=T)) %>% 
+         summarise_at(vars(pts,`x2pa`,`x3pa`,fta),mean,na.rm=TRUE) %>% 
+         ungroup()
+       }
+     else {
+       gg<-gg %>% 
+         ungroup() %>% 
+      filter(tm==input$pts_teams)
+     }
+  
+  gg<-gg %>% 
+      gather("type","value",pts,`x2pa`,`x3pa`,fta) 
+      
+      validate(
+         need(nrow(gg)>1,"no data available for that team in those years")
+          ) 
+      
+      gg<-gg %>% 
+        ggplot(aes(year,value,color=type))+
+        geom_line()+
+       scale_x_continuous(breaks= seq(input$pts_years[1],input$pts_years[2],by=4))+
+        scale_y_continuous(breaks=seq(10,120,by=10))+
+        xlab("Anni")+
+        ylab("Numero medio di punti e tentativi di tiro per partita")+
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+    
+  ggplotly(gg)
+})
+  ),
+tabPanel(
+  "Precisione al tiro",
+  renderPlotly({
+    if (input$pts_teams=="All")
+    {
+      gg<-nbabasicstatistics1 %>% 
+          filter(year %in% seq(input$pts_years[1],input$pts_years[2])) %>% 
+                # !(is.na(`x2pa`) | is.na(`x2p`) | is.na(`x3pa`) | is.na(`x3p`) | is.na(fta) | is.na(ft))) %>% 
+         group_by(year) %>% 
+         summarise(`x3p%`=sum(`x3p`,na.rm=T)/sum(`x3pa`,na.rm=T),
+                    `x2p%`=sum(`x2p`,na.rm=T)/sum(`x2pa`,na.rm=T),
+                    `ft%`=sum(ft,na.rm=T)/sum(fta,na.rm=T)) %>% 
+         ungroup() %>% 
+         gather("type","value",`x2p%`,`x3p%`,`ft%`) 
+    }
+  else
+  {
+      gg<-nbastatistics1 %>% 
+          filter(year %in% seq(input$pts_years[1],input$pts_years[2]), 
+                # !(is.na(`x2pa`) | is.na(`x2p`) | is.na(`x3pa`) | is.na(`x3p`) | is.na(fta) | is.na(ft)),
+                tm==input$pts_teams) %>% 
+         group_by(year) %>% 
+          summarise(`x3p%`=sum(`x3p`,na.rm=T)/sum(`x3pa`,na.rm=T),
+                    `x2p%`=sum(`x2p`,na.rm=T)/sum(`x2pa`,na.rm=T),
+                    `ft%`=sum(ft,na.rm=T)/sum(fta,na.rm=T)) %>% 
+         ungroup() %>% 
+         gather("type","value",`x2p%`,`x3p%`,`ft%`) 
+  }
+      validate(
+        need(nrow(gg)>1,"no data available for that team in those years")
+      )
+
+   gg<-gg %>%
+          ggplot(aes(year,value,color=type)) +
+          geom_line()+
+         scale_x_continuous(breaks= seq(input$pts_years[1],input$pts_years[2],by=4))+
+          scale_y_continuous(breaks=seq(0.2,1,by=0.1))+
+          xlab("Anni")+
+          ylab("Precisione media al tiro")+
+          theme(axis.text.x=element_text(angle=45, hjust=1))
+   
+  ggplotly(gg)
+})
+)
+)
+```
+
+
+## Assist
+
+```{r}
+inputPanel(
+selectizeInput("ast_teams",
+            "scegli le squadre:",
+            choices=append(teams$team,"All",after=0),
+            selected="All"),
+hr(),
+sliderInput("ast_years",
+            "scegli gli anni:",
+            min=1950,max=2018,
+            value=c(1950,2018)))
+
+
+renderPlotly({
+  gg<-nbabasicstatistics1 %>% 
+     filter(year %in% seq(input$ast_years[1],input$ast_years[2])) %>% 
+     group_by(year,tm) %>% 
+     summarise(gp=unique(gp),
+              ast=sum(ast)/gp)
+  
+     if (input$ast_teams=="All"){
+       gg<-gg %>% 
+      summarise(ast=mean(ast,na.rm=T)) %>% 
+         ungroup()
+       }
+     else
+       {
+       gg<-gg %>% 
+         ungroup() %>% 
+      filter(tm==input$ast_teams)
+     }
+      
+      validate(
+         need(nrow(gg)>1,"no data available for that team in those years")
+          ) 
+      
+       gg<-gg %>%
+         ggplot(aes(year,ast))+
+         geom_point()+
+           scale_x_continuous(breaks= seq(input$ast_years[1],input$ast_years[2],by=4))+
+         scale_y_continuous(breaks=seq(18,26,by=1))+
+         # ggtitle(str_c("avg assists per game per ", ... = ifelse(input$pts_teams=="All","Lega",input$pts_teams)))+
+        xlab("Anni")+
+        ylab("Numero medio di assist per partita")+
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+
+   ggplotly(gg)
+})
+```
+
+
+## Rimbalzi
+
+```{r rebounds}
+inputPanel(
+selectizeInput("rebounds_teams",
+               "scegli le squadre:",
+               choices=append(teams$team,"All",after=0),
+               selected="All"),
+hr(),
+sliderInput("rebounds_years",
+            "scegli gli anni:",
+            min=1974,
+            max=2018,
+            value=c(1974,2018)))
+
+renderPlotly({
+   gg<-nbastatistics1 %>%
+      filter(year %in% seq(input$rebounds_years[1],input$rebounds_years[2])) %>%  
+             # !(is.na(`x2pa`) | is.na(`x3pa`) | is.na(fta))) %>%
+      group_by(year,tm) %>% 
+      summarise(gp=unique(gp),
+                drb=sum(drb)/gp,
+                orb=sum(orb)/gp)
+   
+     if (input$rebounds_teams=="All"){
+       gg<-gg %>% 
+      summarise_at(vars(drb,orb),mean,na.rm=T) %>% 
+         ungroup()
+       }
+     else {
+       gg<-gg %>% 
+         ungroup() %>% 
+      filter(tm==input$rebounds_teams)
+     }
+ 
+       gg<-gg %>% 
+         gather("type","value",drb,orb) 
+       
+       validate(
+         need(nrow(gg)>1,"no data available for that team in those years")
+       )
+      
+       gg<-gg %>% 
+        ggplot(aes(year,value,color=type))+
+        geom_line()+
+        xlab("Anni")+
+         ylab("Numero medio di rimbalzi per partita")+
+        scale_x_continuous(breaks= seq(input$rebounds_years[1],input$rebounds_years[2],by=4))+
+         scale_y_continuous(breaks=seq(10,35))
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+      
+      ggplotly(gg)
+})
+```
+
+
+# Si può prevedere la probabilità che una squadra vinca una partita, condizionatamente ai valori riportati nelle statistiche di base ?
+
+<!-- ## Agenda -->
+
+<!-- 1. Analisi della correlazione tra variabili -->
+
+<!-- 2. Costruzione del modello -->
+
+<!-- 3. Interpretazione degli effetti stimati dal modello -->
+
+<!-- 4. Previsioni del modello -->
+
+```{r summ_data}
+summ_nbastatistics1<-nbastatistics1 %>% 
+                    group_by(year,tm) %>% 
+                    summarise(gp=unique(gp),
+                              fg=sum(fg)/gp,
+                              fga=sum(fga)/gp,
+                              fgpercent=round(ifelse(is.nan(fg/fga),0,fg/fga),2),
+                              `x3p`=sum(`x3p`)/gp,
+                              `x3pa`=sum(`x3pa`)/gp,
+                          `x3ppercent`=round(ifelse(is.nan(`x3p`/`x3pa`),0,`x3p`/`x3pa`),2),
+                              `x2p`=sum(`x2p`)/gp,
+                              `x2pa`=sum(`x2pa`)/gp,
+                              `x2ppercent`=round(ifelse(is.nan(`x2p`/`x2pa`),0,`x2p`/`x2pa`),2),
+                          efgpercent=round(ifelse(is.nan((fg+0.5*`x3p`)/fga),0,(fg+0.5*`x3p`)/fga),2),
+                              ft=sum(ft)/gp,
+                              fta=sum(fta)/gp,
+                              ftpercent=round(ifelse(is.nan(ft/fta),0,ft/fta),2),
+                              orb=sum(orb)/gp,
+                              drb=sum(drb)/gp,
+                              trb=sum(trb)/gp,
+                              ast=sum(ast)/gp,
+                              stl=sum(stl)/gp,
+                              blk=sum(blk)/gp,
+                              pf=sum(pf)/gp,
+                              pts=sum(pts)/gp,
+                              tov=sum(tov)/gp) %>% 
+                    ungroup() %>% 
+                    left_join(select(teamshistory,Year,Franchise,W,L,`W/L%`),
+                              by=c("year"="Year","tm"="Franchise")) %>% 
+                    filter(year>=1980)
+
+```
+
+<!-- ## Correlazione tra le variabili -->
+```{r corrplot, eval=FALSE}
+
+selectizeInput("team_corr",
+               "scegli la franchigia:",
+               choices=append(teams$team,"All",after=0),
+               selected="All")
+
+renderPlot({
+  if (input$team_corr=="All"){
+    gg_cor<-summ_nbastatistics1 %>% 
+  group_by(year) %>% 
+  summarise_at(vars(-tm,-gp),mean,na.rm=T) %>% 
+  ungroup() %>% 
+  cor()
+  }
+  else
+  {
+    gg_cor<-summ_nbastatistics1 %>% 
+    filter(tm==input$team_corr) %>% 
+    select(-c(year,tm,gp)) %>% 
+    cor()
+  }
+  
+  corrplot::corrplot(gg_cor,type="upper",method="ellipse")
+})
+
+```
+
+
+## Modello 
+
+- Modello di regressione logistica:
+
+    - $\text{logit}(P(y_i=1|\underline{x}_i))=\underline{x}_i^T \underline{ \beta }$, dove:
+  
+   - $\underline{x}_i$: statistiche di base
+   - $y_i$: indicatore di vittoria di una partita
+
+  <!-- - variabili esplicative: statistiche di base -->
+  <!-- - variabile dipendente: percentuale di partite vinte su partite giocate nella **regular season** 2017-2018 -->
+  
+- Il modello considera solo la storia delle statistiche di base della squadra
+
+- Per un modello ottimale, servirebbe tenere conto anche di:
+
+  - giocatori attuali
+  - allenatore attuale
+
+## Interpretazione dell'effetto
+
+Una variazione unitaria in una statistica di base produce un effetto sul ratio tra l'odds della probabilità di vincere la partita dopo quella variazione e l'odds della probabilità di vincere la partita senza quella variazione
+
+```{r mode_function}
+glm_mod<-function(x){
+  dats<-select(x,-year,-gp,-`W/L%`) #-tm
+  md<-glm(cbind(W,L)~.,data=dats,family=binomial())
+  md_AIC<-MASS::stepAIC(md,direction="both",trace=FALSE)
+  return(md_AIC)
+}
+
+model<-function(team){
+  model_dataset<-summ_nbastatistics1  %>% 
+                    filter(tm==team) %>% 
+                    select(-tm)
+  
+    model_dataset_train<-model_dataset %>% 
+      filter(year < 2018)
+     # model_dataset_test<-model_dataset %>% 
+     #  filter(year>=2018) %>% 
+     #  select(-c(W,L))
+    coeff<- glm_mod(model_dataset_train)$coefficients %>% 
+      exp() %>% 
+      round(3) %>% 
+      as.data.frame()
+    
+    return(coeff)
+}
+```
+
+```{r interpretation}
+
+selectizeInput("model_team",
+                 "scegli la franchigia da modellare:",
+                 choices=teams$team,
+                 selected="GSW")
+
+renderDataTable({
+  model(input$model_team) %>% 
+    datatable(colnames = c("statistica di base", "effetto"),
+              options=list( scrollX=T,
+                           # fixedColumns=T,
+                             pageLength = 5,
+                             lengthChange = FALSE))
+})
+```
+
+
+<!-- ## Previsioni per la regular season 2017-2018 -->
+
+<!-- ```{r predictions} -->
+<!--  training_set<-summ_nbastatistics1 %>%  -->
+<!--    arrange(tm) %>%  -->
+<!--    filter(year < 2018) %>%  -->
+<!--    nest(-tm) -->
+
+<!--  test_set<-summ_nbastatistics1 %>% -->
+<!--    arrange(tm) %>% -->
+<!--    filter(year == 2018) %>% -->
+<!--    nest(-tm) -->
+
+<!--  training_set<-training_set %>% -->
+<!--    mutate(model=purrr::map(data,glm_mod)) -->
+
+<!--  test_set$model<-training_set$model -->
+
+<!--  test_set<-test_set %>% -->
+<!--    mutate(pred=map2(model,data,predict.glm,type="response") %>% unlist()) %>% -->
+<!--    select(tm,pred) %>% -->
+<!--    mutate(year=2018) -->
+
+<!-- summ_nbastatistics1_2018<-summ_nbastatistics1 %>% -->
+<!--   filter(year==2018) %>% -->
+<!--   select(tm,`W/L%`) -->
+
+<!-- test_set<-test_set %>% -->
+<!--   left_join(summ_nbastatistics1_2018,by="tm") %>% -->
+<!--   select(year,tm,`W/L%`,pred) %>% -->
+<!--   mutate(pred=round(pred,3)) -->
+
+<!-- datatable(test_set, -->
+<!--           options=list( rownames=F, -->
+<!--                         scrollX=T, -->
+<!--                            # fixedColumns=T, -->
+<!--                              pageLength = 10, -->
+<!--                              lengthChange = FALSE)) -->
+
+<!-- ``` -->
+
+
+
+
+
+
+

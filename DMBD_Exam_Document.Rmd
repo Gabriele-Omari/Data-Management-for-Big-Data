@@ -1,0 +1,1706 @@
+---
+title: "Evoluzione del campionato NBA dal 1950 al 2018"
+author: "Gabriele Omari"
+output:
+  html_document:
+    toc: yes
+runtime: shiny
+---
+
+# Introduzione
+
+La **National Basketball Association**, o **NBA**, è la principale lega professionistica di pallacanestro degli Stati Uniti e del Canada.
+
+E' stata fondata nel 1946 con il nome di **Basketball Association of America**, o **BAA**, e vedeva la partecipazione di undici squadre:
+
+| **Eastern Division**     | **Western Division**      |
+|--------------------------|---------------------------|
+|1. Washington Capitols    |  1. Chicago Stags         |
+|2. Philadelphia Warriors  |  2. St. Louis Bombers     |
+|3. New York Knicks        |  3. Cleveland Rebels      |
+|4. Providence Steamrollers|  4. Detroit Falcons       |
+|5. Boston Celtics         |  5. Pittsburgh Ironmen    |
+|6. Toronto Huskies        |                           |
+
+Attualmente si compone di trenta squadre:
+
+* ventinove statunitensi
+* una canadese
+
+suddivise secondo il seguente schema:
+
+
+| **Western Conference**       |  **Eastern Conference**         |
+|------------------------------|---------------------------------|
+| **NorthWest Division**       |  **Atlantic Division**          |
+|     1. Denver Nuggets        |     1. Boston Celtics           |
+|     2. Minnesota Timberwolves|     2. Brooklyn Nets            |
+|     3. Oklahoma City Thunder |     3. New York Knicks          |
+|     4. Portland Trail Blazers|     4. Toronto Raptors          |  
+|     5. Utah Jazz             |     5. Philadelphia 76ers       |
+| **Pacific Division**         |  **Central Division**           |
+|      1. Golden State Warriors|       1. Chicago Bulls          |
+|      2. Los Angeles Clippers |       2. Cleveland Cavaliers    |
+|      3. Los Angeles Lakers   |       3. Detroit Pistons        |
+|      4. Phoenix Suns         |       4. Indiana Pacers         |   
+|      5. Sacramento Kings     |       5. Milwaukee Bucks        |
+| **SouthWest Division**       |  **SouthEast Division**         |
+|      1. Dallas Mavericks     |       1. Atlanta Hawks          |
+|      2. Houston Rockets      |       2. Charlotte Hornets      |
+|      3. Memphis Grizzlies    |       3. Miami Heat             |
+|      4. New Orleans Pelicans |       4. Orlando Magic          |
+|      5. San Antonio Spurs    |       5. Washington Wizards     |
+
+
+
+  
+Le trenta squadre disputano una **regular season** di ottantadue partite:
+
++ quarantuno in casa
++ quarantuno fuori casa
+
+Ogni partita è suddivisa in quattro tempi, della durata di dodici minuti ciascuno.
+
+In caso di parità, si procede a oltranza con tempi supplementari della durata di cinque minuti ciascuno.
+
+Al termine della regular season, iniziano i **playoff**.
+
+L'atto conclusivo è costituito dalle **finals**.
+
+In particolare:
+
+1. le prime 8 squadre di ciascuna conference si sfidano tra di loro per il titolo di **campione di conference**
+
+2. i campioni delle due conference si sfidano per il titolo di **campione NBA**
+
+3. ogni serie di partite è al meglio di sette.
+
+```{r options, echo=FALSE}
+# opzioni
+knitr::opts_chunk$set(echo=FALSE,message=FALSE,warning=FALSE)
+```
+
+```{r packages}
+# pacchetti
+
+# markdown
+library(knitr)
+library(rmarkdown)
+
+# tidyverse
+library(purrr)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(stringr)
+library(modelr)
+library(tibble)
+
+# ggplot
+library(ggplot2)
+
+# htmlwidgets
+library(plotly)
+library(DT)
+library(wordcloud2)
+library(leaflet)
+
+# shiny
+library(shiny)
+library(shinyWidgets)
+
+# dati
+library(NBAloveR)
+library(ballr)
+```
+
+## Mappa interattiva
+
+Di seguito una mappa interattiva illustra la disposizione geografica delle trenta squadre
+
+```{r interactive_map}
+
+usa_cities<-maps::us.cities
+
+canada_cities<-maps::canada.cities
+
+cities<-c("Atlanta GA","Boston MA","West New York NY","Charlotte NC","Chicago IL","Cleveland OH","Dallas TX","Denver CO","Detroit MI","San Francisco CA","Houston TX","Indianapolis IN","East Los Angeles CA","Los Angeles CA","Memphis TN","Miami FL","Milwaukee WI","Minneapolis MN","New Orleans LA","New York NY","Oklahoma City OK","Orlando FL","Philadelphia PA","Phoenix AZ","Portland OR","Sacramento CA","San Antonio TX","Toronto ON","Salt Lake City UT","WASHINGTON DC")
+
+toronto<-canada_cities %>%
+  filter(name == "Toronto ON")
+
+nba_cities<-usa_cities %>% 
+  bind_rows(toronto)
+
+franchises<-read_csv("franchises.csv",col_names=T)
+
+franchises$Cities<-cities
+
+franchises1<-franchises %>% 
+  left_join(nba_cities,by=c("Cities"="name"))
+
+images<-c("Atlanta Hawks.jpg","Boston Celtics.jpg","Brooklyn Nets.jpg","Charlotte Hornets.jpg","Chicago Bulls.jpg","Cleveland Cavaliers.jpg","Dallas Mavericks.jpg","Denver Nuggets.jpg","Detroit Pistons.jpg","Golden State Warriors.jpg","Houston Rockets.jpg","Indiana Pacers.jpg","Los Angeles Clippers.jpg","Los Angeles Lakers.jpg","Memphis Grizzlies.jpg","Miami Heat.jpg","Milwaukee Bucks.jpg","Minnesota Timberwolves.jpg","New Orleans Pelicans.jpg","New York Knicks.jpg","Oklahoma City Thunder.jpg","Orlando Magic.jpg","Philadelphia 76ers.jpg","Phoenix Suns.jpg","Portland Trailblazers.jpg","Sacramento Kings.jpg","San Antonio Spurs.jpg","Toronto Raptors.jpg","Utah Jazz.jpg","Washington Wizards.jpg")
+
+images_icons<-icons(str_c("images/",images),iconWidth = 20, iconHeight = 20)
+
+leaflet() %>%
+  addTiles()  %>%
+  addMarkers(data=franchises1, ~long, ~lat, icon=images_icons, label=~Franchise)
+
+```
+
+ ***
+
+# L'analisi {.tabset}
+
+In questo report, intendo effettuare un'analisi longitudinale delle performance dei giocatori e delle squadre che hanno militato nella **NBA** dalla **regular season** 1949-1950 alla **regular season** 2017-2018.
+
+## Motivazioni
+
+Le motivazioni che mi hanno spinto a svolgere questa analisi sono:
+
+1. la passione personale per lo sport della pallacanestro e per il campionato NBA.
+
+2. la popolarità nel mondo e il valore economico sempre maggiori della NBA:
+
+  + per quanto riguarda la popolarità:
+  
+      + la **NBA** è divenuta la lega sportiva più popolare in Cina
+      + negli Stati Uniti, la **NBA** sta sorpassando la **MLB**, al secondo posto dopo la **NFL**
+      
+  + per quanto riguarda il valore economico:
+  
+      + si stima che il valore economico medio di una squadra NBA si attesti sui $1.65 miliardi
+      + tre dei giocatori più pagati al mondo militano nella NBA
+    
+***
+
+## Prospettive e domande
+
+La prospettiva dell'analisi è duplice:
+
+* a livello di giocatore
+* a livello di squadra
+
+Dopo aver importato e preparato i dati, i principali interrogativi ai quali mi prefiggo di rispondere sono:
+
+1. a livello di giocatore:
+  
+    * provenienza:
+  
+      + da quali università proviene la maggior parte dei giocatori statunitensi 
+    
+      + da quali stati proviene la maggior parte dei giocatori non statunitensi 
+      
+    * come si è evoluta negli anni la struttura fisica dei giocatori, statunitensi e non 
+    
+    * distribuzione statistica dei giocatori non statunitensi negli anni:
+    
+      + in termini assoluti
+      
+      + per ruolo
+    
+    * quali sono i giocatori che detengono i record di carriera nelle statistiche di base:
+    
+      + in assoluto
+      
+      + per gara
+  
+2. a livello di squadra:
+
+    * quali sono le squadre più vincenti nella storia del campionato NBA 
+    
+    * ci sono state delle dinastie nella NBA, ovvero delle squadre che hanno vinto il titolo per più anni consecutivi o a distanza ravvicinata
+  
+    * quale è stata l'evoluzione della pallacanestro nel campionato NBA in questi quasi settant'anni; per rispondere a questa domanda analizzo le tre principali statistiche di base:
+      
+      + punti
+      
+      + assist
+      
+      + rimbalzi
+
+    *  è possibile predire la probabilità che una squadra vinca una partita nella stagione 2017-2018 in base alla serie storica delle statistiche di base registrata negli anni passati
+
+***
+  
+## Inconvenienti
+  
+I principali problemi a cui si va incontro con un'analisi longitudinale di questo tipo sono:
+
+1. mancanza di dati
+2. inconsistenza dei dati disponibili
+
+Le cause di queste problematiche, che introducono eterogeneità nei dati analizzati, sono:
+
+  + le squadre NBA sono cambiate nel corso degli anni:
+  
+      * alcune sono state introdotte più o meno recentemente: per esempio, i **Toronto Raptors**sono entrati nel 1995.
+    
+      * alcune sono state sciolte: per esempio, i **Saint Louis Bombers** hanno militato nella NBA dal 1946 al 1950
+    
+      * alcune hanno cambiato sede: per esempio, i **Lakers**, prima di insediarsi nel 1960 a Los Angeles, hanno militato a Minneapolis dal 1948 al 1960
+    
+      * alcune hanno cambiato sede e denominazione: per esempio, i **Seattle Supersonics** hanno giocato nella NBA a Seattle dal 1967 al 2008, prima di trasferirsi a Oklahoma City e diventare gli **Oklahoma City Thunder**
+    
+    Ciò comporta che nel corso degli anni il numero di squadre sia cambiato, e con esso il numero di giocatori: di ciò va tenuto conto nel calcolo delle statistiche a livello aggregato.
+    
+  + le voci statistiche non sono state introdotte tutte nello stesso anno, bensì alcune hanno cominciato a essere rilevate prima, altre dopo: un esempio lampante di ciò è il tiro da tre punti, introdotto nella stagione 1979-1980, mentre il tiro da due punti e i tiri liberi erano già misurati nella stagione 1949-1950
+  
+    Ne consegue che nell'analisi va tenuto conto dell'anno di introduzione delle varie statistiche di base
+    
+  + la tecnologia atta a rilevare le voci statistiche è progredita nel corso del tempo: inizialmente i dati statistici sulla NBA erano scarsi e lacunosi, mentre, al giorno d'oggi, le voci statistiche vengono rilevate azione per azione per ogni giocatore durante ciascuna partita, grazie alla partnership tra la **NBA** e l'azienda **STATS LLC**, che utilizza la tecnologia di tracking dei giocatori **SportsVu**.
+  
+    Ciò comporta che, soprattutto per i primi anni per i quali si hanno dati, ci siano delle informazioni inconsistenti tra di loro e dei dati mancanti.
+ 
+***
+
+# I dati {.tabset}
+  
+Il sito di riferimento per le analisi statistiche sulla pallacanestro è **Basketball Reference**, dal quale è possibile esportare liberamente dati in formato .csv.
+
+In particolare, mi sono avvalso di due pacchetti del linguaggio R:
+
+* **ballr**, che fornisce un'API gratuita per **Basketball Reference**
+
+* **NBAloveR**, che fornisce un'API gratuita per vari siti relativi alla pallacanestro, tra cui **Basketball Reference**
+
+Essi forniscono delle funzioni che automatizzano il processo di estrazione dei dati, in base ai valori di uno/due parametri di input: un anno o una squadra.
+
+## ballr {.tabset}
+
+Utilizzerò la funzione:
+
+* **NBAPerGameStatistics**
+
+### Funzioni {.tabset}
+
+**NBAPerGameStatistics**
+
+```{r ballr_elab, eval=FALSE}
+# NBAPerGameStatistics restituisce un dataset relativo all'anno scelto dall'utente.
+
+# Poiché, ai fini dell'analisi, è necessario disporre dei dati per tutti gli anni dal 1950 al 2018:
+
+# * la funzione viene iterata su tutti gli anni
+# * i risultanti dataset vengono indicizzati per anno e giustapposti per riga a formare un unico dataset
+
+# anni
+years<-tibble(year=seq(1950,2018))
+
+# squadre non più esistenti
+dead_franchises<-c("AND","BLB","CHS","DNN","INO","WSC","STB","WAT","SHE")
+
+nbapergamebasicstatistics<-map(years$year,NBAPerGameStatistics) %>% 
+  map2(years$year,function(x,y){
+      x %>% 
+      mutate(year=y) %>% 
+      select(rk,year,everything())
+  }) %>% 
+  reduce(bind_rows) %>% 
+  as_tibble()
+
+nbapergamebasicstatistics1<-nbapergamebasicstatistics %>% 
+  filter(!(is.na(age)),
+         !(tm %in% dead_franchises),
+         tm!="TOT") %>% 
+  mutate(player=ifelse(str_detect(player,"\\*"), str_sub(player,end=-2), player),
+          tm=case_when(
+             tm %in% c("TRI","MLH","STL","ATL")~"ATL",
+             tm %in% c("NYN","NJN","BRK")~"BRK",
+             tm %in% c("FTW","DET")~"DET",
+             tm %in% c("PHW","SFW","GSW")~"GSW",
+             tm %in% c("SDR","HOU")~"HOU",
+             tm %in% c("BUF","SDC","LAC")~"LAC",
+             tm %in% c("MNL","LAL")~"LAL",
+             tm %in% c("CHA","CHO","CHH")~"CHA",
+             tm %in% c("VAN","MEM")~"MEM",
+             tm %in% c("NOH","NOK","NOP")~"NOP",
+             tm %in% c("SEA","OKC")~"OKC",
+             tm %in% c("SYR","PHI")~"PHI",
+             tm %in% c("ROC","CIN","KCO","KCK","SAC")~"SAC",
+             tm %in% c("NOJ","UTA")~"UTA",
+             tm %in% c("CHP","CHZ","BAL","CAP","WSB","WAS")~"WAS",
+             TRUE~tm),
+          gp=case_when(
+           year==1950 ~64,
+           year==1951 ~68,
+           year==1952 ~66,
+           year==1953 ~70,
+           year %in% seq(1954,1959)~72,
+           year == 1960~75,
+           year ==1961~79,
+           year %in% seq(1962,1966)~80,
+           year==1967~81,
+           year %in% c(seq(1968,1998),seq(2000,2011),seq(2013,2018))~82,
+           year ==1999~50,
+           year==2012~66)) %>% 
+  select(-link) %>% 
+  distinct()
+
+# calcolo le statistiche assolute per anno
+nbabasicstatistics1<-nbapergamebasicstatistics1 %>% 
+   mutate_at(vars(mp,fg,fga,`x3p`,`x3pa`,`x2p`,`x2pa`,ft,fta,orb,drb,trb,ast,stl,blk,tov,pf,pts),~ round(.*g))
+
+# Poiché queste operazioni sono "time-consuming", ogni dataset prodotto viene salvato in formato .csv in modo che, a ogni successivo "rendering" del report, i dati siano letti da un file .csv, anziché ottenuti con ballr::NBAPerGameStatistics
+
+nbapergamebasicstatistics %>%
+  write_csv("nbapergamebasicstatistics.csv")
+
+nbapergamebasicstatistics1 %>%
+  write_csv("nbapergamebasicstatistics1.csv")
+
+nbabasicstatistics1 %>%
+  write_csv("nbabasicstatistics1.csv")
+```
+
+```{r}
+nbabasicstatistics1<-read_csv("nbabasicstatistics1.csv", col_names=TRUE, guess_max=7000)
+
+nbabasicstatistics1
+```
+
+Il dataset contiene:
+
+* 22886 righe
+* 32 colonne
+
+Esse sono:
+
+* **rk**: rank del giocatore
+
+* **player**: nome e cognome del giocatore
+
+* **pos**: posizione ricoperta dal giocatore nella stagione 2017-2018
+
+* **age**: età del giocatore nella stagione 2017-2018
+
+* **tm**: squadra del giocatore nella stagione 2017-2018
+
+* **g**: numero di partite giocate dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **mp**: minuti di gioco per partita del giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **x3p**: tiri da tre punti segnati per partita per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **x3pa**: tiri da tre punti tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **x3ppercent** = x3p/x3pa: percentuale dei tiri da tre punti segnati rispetto a quelli tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **x2p**: tiri da due punti segnati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **x2pa**: tiri da due punti tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **x2ppercent** = x2p/x2pa: percentuale di tiri da due punti segnati rispetto a quelli tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **fg**=x2p+x3p: tiri da due e da tre punti segnati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **fga** = x2pa + x3pa: tiri da due e da tre punti tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **fgpercent** = fg/fga: percentuale dei tiri da due e da tre punti segnati rispetto a quelli tentati, per partita, dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **efgpercent** = (fg+.5*x3p)/fga: cerca di distinguere tra tiri da due e da tre punti
+
+* **ft**: tiri liberi segnati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **fta**: tiri liberi tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **ftpercent** = ft/fta: percentuale di tiri liberi segnati rispetto a quelli tentati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **orb**: rimbalzi catturati nella metà campo offensiva per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **drb **: rimbalzi catturati nella metà campo difensiva per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **trb** = drb+orb: rimbalzi totali catturati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **ast**: assist ai compagni di squadra per partita da parte del giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **stl**: palle rubate agli avversari per partita da parte del giocatore nella squadra **tm** nella stagione 2017-2018
+
+**tov** : palle perse per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **pf**: falli commessi per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **pts**: punti realizzati per partita dal giocatore nella squadra **tm** nella stagione 2017-2018
+
+* **gp**: numero di partite disputate in una certa stagione
+
+***
+
+## NBAloveR {.tabset}
+
+Utilizzerò: 
+
+* una funzione:
+
+  + **getTeamHistory**
+  
+* due dataset:
+
+  + **players**
+  + **franchise**
+  
+### Funzioni {.tabset}
+
+**getTeamHistory**
+
+```{r nbalover_elab1, eval=FALSE}
+
+# getTeamHistory restituisce un dataset relativo alla squadra scelta dall'utente
+
+# Poiché, ai fini dell'analisi, è necessario disporre dei dati per tutti gli anni dal 1950 al 2018:
+
+# * la funzione viene iterata su tutti le squadre
+# * i risultanti dataset vengono indicizzati per anno e giustapposti per riga a formare un unico dataset
+
+# squadre
+teams<-tibble(team=c("ATL","BOS","BRK","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHO","POR","SAC","SAS","TOR","UTA","WAS"))
+
+# getTeamHistory non recupera i dati per due squadre:
+# 1. Brooklyn Nets
+# 2. New Orleans Pelicans
+
+# i dati relativi a queste due squadre sono stati esportati da Basketball Reference
+
+less_teams<-tibble(team=c("ATL","BOS","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NYK","OKC","ORL","PHI","PHO","POR","SAC","SAS","TOR","UTA","WAS"))
+
+lower_less_teams<-map(less_teams,str_to_lower)
+
+teamhistory<-map(lower_less_teams$team,getTeamHistory)
+
+teamshistory1<-teamhistory %>%
+  map2(less_teams$team,function(x,y){
+      x %>%
+      mutate(Franchise=y) %>%
+      select(Franchise,everything())
+    }) %>%
+  reduce(bind_rows) %>% 
+  as_tibble()
+
+teamshistory1 %>% 
+  write_csv("teamshistory1.csv")
+
+nets<-readxl::read_excel("Brooklyn Nets.xls",col_names=TRUE,guess_max=50) %>% 
+  mutate_at(vars(`W/L%`,SRS,Pace,`Rel Pace`,ORtg,`Rel ORtg`,DRtg,`Rel DRtg`),as.numeric) %>% 
+  mutate(Franchise="BRK") %>% 
+  select(Franchise,everything()) %>% 
+  rename(RelativePace=`Rel Pace`, RelativeORtg=`Rel ORtg`, RelativeDRtg=`Rel DRtg`, TopWinShare=`Top WS`)
+
+pelicans<-readxl::read_excel("New Orleans Pelicans.xls",col_names=TRUE,guess_max=50) %>% 
+  mutate_at(vars(`W/L%`,SRS,Pace,`Rel Pace`,ORtg,`Rel ORtg`,DRtg,`Rel DRtg`),as.numeric) %>% 
+  mutate(Franchise="NOP") %>% 
+  select(Franchise,everything()) %>% 
+  rename(RelativePace=`Rel Pace`, RelativeORtg=`Rel ORtg`, RelativeDRtg=`Rel DRtg`, TopWinShare=`Top WS`)
+
+teamshistory<-bind_rows(teamshistory1,nets,pelicans) %>% 
+  filter(Lg=="NBA") %>% 
+  mutate(Year=as.integer(ifelse(Season=="1999-00","2000",str_c(str_sub(Season,end=2),str_sub(Season,start=-2))))) %>% 
+  # select(Franchise,Year,Team) %>% 
+  arrange(Franchise)  
+  # as_tibble()
+
+# Poiché queste operazioni sono "time-consuming", ogni dataset prodotto viene salvato in formato .csv in modo che, a ogni successivo "rendering" del report, i dati siano letti da un file .csv, anziché ottenuti con NBAloveR::getTeamStandings
+
+teamshistory %>%
+  write_csv("teamshistory.csv")
+```
+
+```{r}
+
+teamshistory<-read_csv("teamshistory.csv",col_names=TRUE,guess_max=7000) %>% 
+  as_tibble()
+
+teamshistory
+```
+
+Il dataset contiene:
+
+* 1465 righe
+* 19 colonne
+
+Le variabili sono:
+
+* **Season**: regular season
+* **Lg**: lega (NBA/ABA)
+* **Team**: team
+* **W**: partite vinte dal team nella stagione **Season** e nella lega **Lg**
+* **L**: partite perse dal team nella stagione **Season** e nella lega **Lg**
+* **W/L%** = W/(W+L): percentuale di partite vinte rispetto a quelle giocate dal team nella stagione **Season** e nella lega **Lg**
+* **Finish**: piazzamento del team al termine della stagione **Season** nella Division
+* **SRS**: un punteggio per team che considera il differenziale medio di punti e l'avversità del calendario delle partite. E' definito in termini di punti sopra/sotto la media, dove zero è la media
+* **Pace**: Pace Factor, stima del numero di possessi per 48 minuti da parte del team
+* **Relative Pace**: una versione relativa di **Pace**
+* **ORtg**: misura la capacità di produrre punti
+* **Relative ORtg**: una versione relativa di **ORtg**
+* **DRtg**: misura la capacità nell'impedire agli avversari di segnare punti
+* **Relative DRtg**:  una versione relativa di **DRtg**
+* **Playoffs**: se disputati, il piazzamento ai playoffs
+* **Coaches**: allenatore della squadra
+* **TopWinShares**: giocatore con il miglior **Win Shares**, una misura del contributo di un giocatore alla squadra nella vincere una partita
+* **Year**: secondo dei due anni che compaiono in **Season**
+
+***
+
+### Dataset {.tabset}
+
+#### franchise
+
+**franchise**
+
+```{r savedata3, eval=FALSE}
+franchises<-NBAloveR::franchise %>% 
+   as_tibble()
+
+franchises %>% 
+  write_csv("franchises.csv")
+```
+
+```{r}
+franchises<-read_csv("franchises.csv",col_names=TRUE,guess_max=30) %>% 
+  as_tibble()
+
+franchises
+```
+
+Consta di:
+
+* 30 righe
+* 13 colonne
+
+Le variabili sono:
+
+* **Franchise**: la franchigia
+* **Lg**: la lega in cui ha militato: NBA, BAA, ABA
+* **From**: il primo anno di militanza in una lega
+* **To**: l'ultimo anno di militanza in una lega
+* **Years**: anni di permanenenza in almeno una delle tre leghe
+* **G**: il numero di partite giocate
+* **W**: il numero di partite vinte
+* **L**: il numero di partite perse
+* **Per**: il rapporto tra partite vinte e partite giocate
+* **Playoffs**: il numero di qualificazioni ai playoffs
+* **Division**: il numero di Division vinte
+* **Conference**: il numero di Conference vinte
+* **Champions**: il numero di campionati NBA vinti
+
+***
+
+#### players
+
+**players**
+
+```{r eval=FALSE}
+
+player<-NBAloveR::players
+
+players<-player %>%
+  mutate_if(is.factor,as.character) %>% 
+    semi_join(nbabasicstatistics1,by=c("Player"="player","Year"="year")) %>% 
+    filter_at(vars(WT,HT,Age),~.!="-") %>% 
+    mutate_at(vars(HT,WT,Age),as.character) %>% 
+    mutate_at(vars(WT,Age),as.integer) %>% 
+    separate(HT,into=c("HT1","HT2"),sep="-") %>%
+    mutate(State=ifelse(str_detect(Nationality,"([a-z])([A-Z])"),
+                           str_sub(Nationality,end=str_locate(Nationality,"([a-z])([A-Z])")),
+                              Nationality),
+           Draft=ifelse(str_detect(Draft.Status,"Undrafted"),"Undrafted","Drafted"),
+           Prov=ifelse(State=="United States","USA", "Non USA"),
+           HT=measurements::conv_unit(as.integer(HT1),"ft","cm") + measurements::conv_unit(as.integer(HT2),"inch","cm"),
+           WT=measurements::conv_unit(WT,"lbs","kg")) %>% 
+    select(-c(HT1,HT2)) %>% 
+    select(Player,Pos,HT,everything()) 
+
+# Poiché queste operazioni sono "time-consuming", ogni dataset prodotto viene salvato in formato .csv in modo che, a ogni successivo "rendering" del report, i dati siano letti da un file .csv, anziché ottenuti con NBAloveR::players
+
+players %>%
+  write_csv("players.csv")
+```
+
+
+```{r}
+players<-read_csv("players.csv",col_names=TRUE,guess_max=7000) %>% 
+  as_tibble()
+
+players
+```
+
+Consta di:
+
+* 21282 righe
+* 13 colonne
+
+Le variabili sono:
+
+* **Player**: nome e cognome del giocatore
+* **Pos**: ruolo ricoperto dal giocatore in quella stagione
+* **HT**: altezza del giocatore
+* **WT**: peso del giocatore
+* **Age**: età del giocatore per quella stagione
+* **Teams**: squadra/e in cui il giocatore ha militato durante quella stagione
+* **GP**: partite giocate durante quella stagione
+* **YOS**: rank dell'anno nella carriera del giocatore
+* **PreDraftTeam**: team in cui il giocatore militava prima di essere scelto/"draftato" da qualche franchigia NBA
+* **Draft.Status**: indica se il giocatore è stato scelto da una squadra/**draftato** o meno; nel caso in cui sia stato **draftato**, ne descrive i dettagli
+* **Nationality**: nazionalità del giocatore
+* **Year**: anno di riferimento
+* **RookieYear***: anno di Rookie, ovvero primo anno di permanenza in NBA
+* **State**: paese di nascita del giocatore
+* **Prov**: indica se il giocatore è statunitense o meno
+
+***
+
+```{r eval=FALSE}
+
+# unisco i dataset "nbapergamestatistics1" e "players"
+
+nbastatistics<-nbabasicstatistics1 %>% 
+  inner_join(players,by=c("player"="Player","year"="Year"))
+
+nbastatistics1<-nbastatistics %>% 
+  select(-c(Pos,GP,Teams,Age))
+
+nbastatistics1 %>% 
+  write_csv("nbastatistics1.csv")
+```
+
+```{r, read_dataset}
+
+# anni
+years<-tibble(year=seq(1950,2018))
+
+# squadre non più esistenti
+dead_franchises<-c("AND","BLB","CHS","DNN","INO","WSC","STB","WAT","SHE")
+
+# squadre
+teams<-tibble(team=c("ATL","BOS","BRK","CHA","CHI","CLE","DAL","DEN","DET","GSW","HOU","IND","LAC","LAL","MEM","MIA","MIL","MIN","NOP","NYK","OKC","ORL","PHI","PHO","POR","SAC","SAS","TOR","UTA","WAS"))
+
+nbastatistics1<-read_csv("nbastatistics1.csv",col_names=TRUE,guess_max=7000) %>% 
+  as_tibble()
+```
+
+# Analisi a livello di giocatore
+
+Di seguito, la prospettiva dell'analisi è per singolo giocatore.
+
+Cercherò di rispondere alle seguenti domande:
+
+## Qual'è la provenienza geografica e culturale dei giocatori NBA? {.tabset}
+
+Ho ritenuto interessante analizzare:
+
+* le università più frequentate dai giocatori statunitensi prima di accedere alla NBA
+
+* gli stati da cui provengono la maggior parte dei giocatori non statunitensi
+
+Non considero le università dei giocatori non statunitensi perché, a differenza dei giocatori statunitensi, i quali, prima di accedere alla NBA, frequentano un' High School o un College, spesso i giocatori non statunitensi militano in squadre professionistische nei loro paesi/continenti, prima di entrare nella NBA.
+
+### Da quali università provengono i giocatori statunitensi ?
+```{r universities}
+
+          sliderInput("univ_top",
+                      "scegli il numero massimo di università:",
+          min=5,max=30,step=5,value=30)
+
+      renderPlotly({
+              gg<-nbastatistics1 %>% 
+              filter(Prov=="USA",
+              !is.na(PreDraftTeam)) %>% 
+              add_count(name="tot") %>% 
+              group_by(PreDraftTeam) %>% 
+              summarise(n=n(),tot=unique(tot))%>% 
+              ungroup() %>% 
+                mutate(freq=n/tot) %>% 
+              arrange(desc(freq)) %>% 
+              top_n(input$univ_top) %>% 
+              ggplot(aes(reorder(PreDraftTeam,freq),freq))+
+              geom_bar(stat="identity")+
+              coord_flip()+
+              xlab("Università")+
+              ylab("Frequenza Relativa")+
+              scale_y_continuous(breaks=seq(0,0.03,by=0.01))
+          
+              ggplotly(gg)})
+
+```
+
+La "Top 5" delle università che hanno "formato" più giocatori statunitensi sono:
+
+  * North Carolina State University
+  * UCLA
+  * University of Kentucky
+  * University of Kansas
+  * Duke University
+
+Queste università sono rinomate quasi più per la preparazione cestistica che forniscono che per quella accademica.
+
+### Da quali stati provengono i giocatori non statunitensi ?
+```{r states}
+          sliderInput("state_top",
+                      "scegli il numero massimo di paesi:",
+          min=5,max=30,step=5,value=30)
+        
+
+      renderPlotly({
+              gg<-nbastatistics1 %>% 
+              filter(Prov=="Non USA") %>% 
+              add_count(name="tot") %>% 
+              group_by(State) %>% 
+              summarise(n=n(),tot=unique(tot))%>% 
+              ungroup() %>% 
+              mutate(freq=n/tot) %>% 
+              arrange(desc(freq)) %>% 
+              top_n(input$state_top) %>% 
+              ggplot(aes(reorder(State,freq),freq))+
+              geom_bar(stat="identity")+
+              coord_flip()+
+              xlab("Stati")+
+              ylab("Frequenza Relativa")+
+              scale_y_continuous(breaks=seq(0,0.09,by=0.01))
+
+              ggplotly(gg)})
+
+```
+
+La Top 5 degli stati da cui proviene la maggior parte dei giocatori non statunitensi è:
+
+  * Francia
+  * Canada
+  * Serbia
+  * Germania
+  * Croazia
+  
+Sommando le frequenze relative, si nota che la maggior parte dei giocatori internazionali che militano nella NBA provengono dall'Europa.
+
+L'Italia è 17ma con il ~2% dei giocatori internazionali.
+
+***
+
+## Evoluzione della struttura fisica dei giocatori nel tempo
+
+Esploriamo l'evoluzione nel tempo del peso (in kg) e dell'altezza (in cm) dei giocatori, facendo distinzione per:
+
+* Provenienza: 
+
+  + USA
+  + Non USA
+  
+* Ruolo
+
+  + Point Guard
+  + Shooting Guard
+  + Small Forward
+  + Power Forward
+  + Center
+  
+```{r height_weight}
+   inputPanel(
+      sliderInput("body_year",
+            "scegli gli anni:",
+            min=1950, max=2018,
+            value=c(1958,2018),
+            sep=""),
+      br(),
+    numericInput("int",
+                 "inserisci l'intervallo tra gli anni:",
+                 min=1,max=10,value=10))
+    
+renderPlotly({
+    
+   gg<- nbastatistics1 %>% 
+    filter(year %in% seq(input$body_year[1],input$body_year[2],by=input$int)) %>% 
+    group_by(year,Prov,pos,player) %>% 
+    summarise(HT=mean(HT,na.rm=TRUE),WT=mean(WT,na.rm=TRUE)) %>% 
+    ungroup() %>% 
+    ggplot(aes(WT,HT,text=player,frame=year,color=pos,shape=Prov))+
+    geom_point()+
+     scale_x_continuous(breaks=seq(60,160,by=5))+
+     scale_y_continuous(breaks=seq(160,230,by=5))
+    
+   ggplotly(gg)
+    })
+```
+
+Si nota che:
+
+* la nuvola di punti, nel corso degli anni, è diventata sempre più dispersa: ciò significa che nel corso del tempo i giocatori sono diventati sempre più eterogenei tra di loro in merito alla struttura fisica. In particolare:
+
+  * dal punto di vista dell'altezza:
+
+    + sono emerse degli outlier tra le "Point Guard" con altezze molto basse, anche sui 160 cm, come **Spud Webb** e **Muggsy Bogues**
+    + le "Shooting Guard" sono cresciute, fino a raggiungere i ~200 cm
+    + le "Small Forward" e le "Power Forward" si sono mescolate
+    + sono emersi degli outlier tra i "Center" con altezze molto elevate, anche sopra i 220 cm, come **Yao Ming** e **Shawn Bradley**
+    
+    
+  * dal punto di vista del peso:
+  
+    + nel complesso, tutti i giocatori hanno incrementato la loro stazza. Ciò è interpretabile come un aumento della massa muscolare media nel tempo.
+    
+* inizialmente, oltre alle cinque posizioni,tradizionali, ce ne erano altre che, tuttavia, col passare degli anni, sono scomparse: ciò è dovuto al fatto che la precisione nel classificare i giocatori per ruolo è migliorata con il passare degli anni.
+
+* l'aumento del numero di giocatori, conseguenza dell'incremento del numero di squadre partecipanti
+
+* la presenza crescente dei giocatori non statunitensi, soprattutto dotati di possente stazza fisica, aspetto che viene approfondito nel paragrafo successivo
+
+In conclusione, la stazza fisica è diventata un fattore sempre più rilevante per i giocatori e per gli allenatori:
+
+* da un lato, i "big men" sono sempre più diffusi in quanto, oltre alle capacità cestistiche, verosimilmente godono di un vantaggio fisico sui pariruolo avversari.
+E' il caso di **LeBron James** e **Giannis Antetokounmpo**
+
+* dall'altro, i giocatori che sono relativamente "piccoli", sono costretti ad far sempre più leva sulle capacità tecniche.
+E' il caso di **Allen Iverson** e **Stephen Curry**
+
+***
+
+## Come si distribuiscono i giocatori internazionali nella NBA? {.tabset}
+
+### In termini assoluti
+
+Di seguito si visualizza la distribuzione statistica per anno dei giocatori statunitensi e non
+```{r}
+
+renderPlotly({
+gg<-nbastatistics1 %>% 
+  # filter(year %in% input$year_non_usa) %>% 
+  add_count(year) %>% 
+  group_by(year,Prov) %>% 
+  summarise(rel_n=n(),n=unique(n)) %>% 
+  ungroup() %>% 
+  mutate(freq=rel_n/n) %>% 
+      ggplot(aes(year,freq,fill=Prov))+
+      geom_bar(stat="identity")+
+  xlab("Anni")+
+  ylab("Frequenza Relativa")+
+  scale_x_continuous(breaks=seq(1950,2010,by=5))+
+  scale_y_continuous(breaks=seq(0,1,by=0.1))
+
+ggplotly(gg)
+  })
+
+```
+
+Si nota che, a eccezione degli anni 1959, 1960, 1961, 1973 e 1974, c'è sempre stato almeno un giocatore "internazionale", tuttavia, è a partire dagli anni novanta che si assiste a un aumento marcato della quota di giocatori non statunitensi fino ad arrivare al ~23% nell'anno 2017.
+
+### Per ruolo
+Si analizza quale sia la distribuzione nel corso degli anni dei giocatori statunitensi e non per ruolo: 
+
+```{r presence}
+sidebarPanel(
+sliderInput("inter_year",
+  "scegli l'anno",
+  min =1950,max=2018,
+  value=2018,
+  sep=""))
+
+mainPanel(
+renderText({
+  str_c("Anno: ", input$inter_year)
+}),
+br(),
+renderPlotly({
+  gg<-nbastatistics1 %>%
+    add_count(year,pos,name="npos") %>% 
+    add_count(year,pos,Prov,name="nprov") %>% 
+    mutate(freq=nprov/npos) %>%
+    filter(year==input$inter_year) %>% 
+    ggplot(aes(x=pos,y=freq,fill=Prov))+
+   geom_bar(position="dodge",stat="identity")+
+    xlab("Ruolo")+
+    ylab("Frequenza Relativa")+
+    scale_y_continuous(breaks=seq(0,1,by=0.1))
+  
+  ggplotly(gg)
+})
+)
+```
+
+L'evoluzione per ruolo della distribuzione dei giocatori "internazionali" segue quella mostrata nel paragrafo adiacente.
+
+E' interessante notare che il ruolo in cui i giocatori non statunitensi sono più diffusi è quello del "Center" (attualmente costituiscono il ~39% del totale) seguito da "Power Forward", "Small Forward", "Point Guard" e "Shooting Guard".
+
+Alla luce dell'osservazione precedente, se si confronta la distribuzione statistica per ruolo dei giocatori non statunitensi con quella per peso/altezza, analizzata nel paragrafo relativo alla struttura fisica, si può intuire una correlazione positiva tra stazza fisica e percentuale di giocatori "internazionali" presenti nella NBA: ciò è indicativo del fatto che gli scout NBA, nel reclutare giocatori non statunitensi, prestano particolare attenzione alla struttura fisica di questi.
+
+***
+
+## Quali giocatori detengono il record di carriera nelle statistiche di base? {.tabset}
+
+Visualizziamo i "Career Leaders" nelle statistiche di base
+
+* In giallo sono evidenziate le righe relative a giocatori ancora in attività
+* La voce selezionata dall'utente e secondo la quale sono ordinate in ordine decrescente le righe della tabella è evidenziata in grassetto
+
+### In Assoluto
+
+Si considera la somma delle voci statistiche messea a referto per tutte gli anni di carriera del giocatore:
+
+```{r careerpoints}
+inputPanel(
+selectizeInput("stat_abs",
+               "scegli la statistica:",
+               choices=c("g","mp","pts","fg","fga","x2p","x2pa","x3p","x3pa","ft","fta","trb","blk","stl","pf"),
+               selected="pts"))
+
+renderDataTable({
+  nbastatistics1 %>% 
+    mutate(skey=str_c(player,year-age-1)) %>% 
+    group_by(skey) %>% 
+    summarise(  g=sum(g),
+                mp=sum(mp),
+                pts=sum(pts),
+                fg=sum(fg),
+                fga=sum(fga),
+                `x2p`=sum(`x2p`),
+                `x2pa`=sum(`x2pa`),
+                `x3p`=sum(`x3p`),
+                `x3pa`=sum(`x3pa`),
+                ft=sum(ft),
+                fta=sum(fta),
+                drb=sum(drb),
+                trb=sum(trb),
+                blk=sum(blk),
+                stl=sum(stl),
+                pf=sum(pf),
+                last_year=max(year)) %>% 
+    ungroup() %>%
+    mutate(fgpercent=round(ifelse(is.nan(fg/fga),0,fg/fga),2),
+           `x3ppercent`=round(ifelse(is.nan(`x3p`/`x3pa`),0,`x3p`/`x3pa`),2),
+           `x2ppercent`=round(ifelse(is.nan(`x2p`/`x2pa`),0,`x2p`/`x2pa`),2),
+           ftpercent=round(ifelse(is.nan(ft/fta),0,ft/fta),2),
+           efgpercent=round(ifelse(is.nan((fg+0.5*`x3p`)/fga),0,(fg+0.5*`x3p`)/fga),2),
+           player=str_sub(skey,end=-5)) %>%
+          select(-skey) %>% 
+    select(player,everything()) %>% 
+    arrange(desc(pts)) %>%
+    arrange(desc(get(input$stat_abs))) %>% 
+    # select(player,!!sym(input$stat_abs),everything()) %>% 
+    top_n(100,wt=get(input$stat_abs)) %>% 
+    datatable(options=list(scrollX=T)) %>% 
+    formatStyle(columns ="player",
+                valueColumns="last_year",
+                target="row",
+                backgroundColor = styleEqual(c("2018"),c("yellow"))) %>% 
+    formatStyle(columns=input$stat_abs,
+                  fontWeight="bold")
+})
+```
+
+Si nota che, tra i migliori giocatori, detengono i record di carriera coloro che sono stati più longevi, ovvero hanno giocato più partite, e non coloro che hanno fornito il miglior rendimento in ciascuna partita disputata (rendimento misurato dalle voci per gara).
+
+***
+
+### Per Gara
+
+Si considera il rapporto tra il totale delle voci statistiche messe a referto e il totale delle gare disputate per tutti gli anni di carriera del giocatore:
+
+```{r}
+inputPanel(
+selectizeInput("stat_per_game",
+               "scegli la statistica:",
+               choices=c("mp","pts","fg","fga","x2p","x2pa","x3p","x3pa","ft","fta","trb","blk","stl","pf"),
+               selected="pts"))
+
+renderDataTable({
+
+nbastatistics1 %>% 
+    mutate(skey=str_c(player,year-age-1)) %>% 
+    group_by(skey) %>% 
+    summarise(g=sum(g),
+                mp=round(sum(mp)/sum(g),2),
+                pts=round(sum(pts)/sum(g),2),
+                fg=round(sum(fg)/sum(g),2),
+                fga=round(sum(fga)/sum(g),2),
+                `x2p`=round(sum(`x2p`)/sum(g),2),
+                `x2pa`=round(sum(`x2pa`)/sum(g),2),
+                `x3p`=round(sum(`x3p`)/sum(g),2),
+                `x3pa`=round(sum(`x3pa`)/sum(g),2),
+                ft=round(sum(ft)/sum(g),2),
+                fta=round(sum(fta)/sum(g),2),
+                drb=round(sum(drb)/sum(g),2),
+                trb=round(sum(trb)/sum(g),2),
+                blk=round(sum(blk)/sum(g),2),
+                stl=round(sum(stl)/sum(g),2),
+                pf=round(sum(pf)/sum(g),2),
+                last_year=max(year)) %>%
+    ungroup() %>% 
+   mutate(fgpercent=round(ifelse(is.nan(fg/fga),0,fg/fga),2),
+           `x3ppercent`=round(ifelse(is.nan(`x3p`/`x3pa`),0,`x3p`/`x3pa`),2),
+           `x2ppercent`=round(ifelse(is.nan(`x2p`/`x2pa`),0,`x2p`/`x2pa`),2),
+           ftpercent=round(ifelse(is.nan(ft/fta),0,ft/fta),2),
+           efgpercent=round(ifelse(is.nan((fg+0.5*`x3p`)/fga),0,(fg+0.5*`x3p`)/fga),2),
+           player=str_sub(skey,end=-5)) %>%
+           select(-skey) %>% 
+    select(player,everything()) %>% 
+    arrange(desc(get(input$stat_per_game))) %>% 
+    # select(player,!!sym(input$stat_per_game),everything()) %>% 
+    top_n(100,wt=get(input$stat_per_game)) %>% 
+    datatable(options=list(scrollX=T)) %>% 
+    formatStyle(columns = c("player"),
+                valueColumns=c("last_year"),
+                target="row",
+                backgroundColor = styleEqual(c("2018"),c("yellow"))) %>% 
+    formatStyle(columns=input$stat_per_game,
+                  fontWeight="bold")
+})
+```
+
+Si nota che, tra i migliori giocatori, detengono i record di carriera coloro che sono stati più longevi, ovvero hanno giocato più partite, e non coloro che hanno fornito il miglior rendimento in ciascuna partita disputata (rendimento misurato dalle voci per gara).
+
+***
+
+# Analisi a livello di squadra
+
+L'analisi è ora condotta in una prospettiva aggregata, ovvero di squadra.
+
+Cercherò di rispondere alle seguenti domande:
+
+## Quali sono le squadre più titolate? {.tabset}
+
+### Quale franchigia ha vinto più titoli ?
+```{r nbachampions}
+sidebarPanel(
+selectizeInput("champtype",
+               "scegli tra:",
+               choices=c("Division","Conference","Champions"),
+               selected="Champions"))
+
+mainPanel(
+renderPlotly({
+  gg<-franchises %>% 
+      ggplot(aes(reorder(Franchise,get(input$champtype)),get(input$champtype)))+
+      geom_bar(stat="identity")+
+      coord_flip()+
+      ggtitle(str_c("Quale franchigia ha vinto più ", input$champtype, " ?"))+
+      xlab("Squadre")+
+      ylab(str_c("numero di ", input$champtype))+
+      theme_minimal()
+
+  ggplotly(gg)
+})
+)
+```
+
+Si vede che, per quanto riguarda:
+
+1. il titolo di campione NBA, sul podio ci sono:
+  + i **Boston Celtics** con 17 anelli
+  + i **Los Angeles Lakers** con 16 anelli
+  + i **Golden State Warriors** e i **Chicago Bulls** con 6 anelli
+  
+2. il titolo di campione di Conference (interpretabile come qualificazione alle **Finals**), sul podio ci sono:
+  + i **Boston Celtics**, con 21 titoli
+  + i **Los Angeles Lakers**, con 18 titoli
+  + i **San Antonio Spurs**, con 11 titoli
+
+3. il primo posto nella Division (interpretabile come qualificazione ai **Playoff**), sul podio ci sono:
+  + i **Los Angeles Lakers**, con 33 primi posti
+  + i **Boston Celtics** e i **San Antonio Spurs**, con 22 primi posti
+  + i **Milwaukee Bucks** e i **Miami Heat**, con 13 primi posti
+  
+***
+  
+### Ci sono state delle dinastie nella storia della NBA ?
+
+```{r timenbachampions}
+gg<-teamshistory %>% 
+  filter(Year %in% seq(1950,2018),Lg=="NBA") %>% 
+  mutate(nba_champion=ifelse(Playoffs!="Won Finals"|is.na(Playoffs),0,1)) %>% 
+  filter(nba_champion==1) %>%
+  ggplot(aes(Year,Franchise,label=Team)) +
+  geom_point()+
+  scale_x_continuous(breaks=seq(1950,2018,by=5))
+
+ggplotly(gg)
+```
+  
+Ci sono state delle dinastie nelle seguenti decadi:
+
+* dei **Lakers** negli anni cinquanta
+
+* dei **Celtics** negli anni sessanta
+
+* dei **Lakers** e dei **Celtics** negli anni ottanta
+
+* dei **Bulls** negli anni novanta
+
+* dei **Lakers** e dei **Spurs** nei primi anni duemila
+
+***
+
+# Statistiche di base a livello di squadra {.tabset}
+
+Di seguito esploriamo l'evoluzione della pallacanestro nella NBA nel tempo, analizzando alcune statistiche di base misurate per gara per una ipotetica squadra "media" della Lega
+
+## Canestri {.tabset}
+
+### Punti segnati in media per gara
+```{r}
+inputPanel(
+selectizeInput("pts_teams",
+            "scegli le squadre:",
+            choices=append(teams$team,"All",after=0),
+            selected="All"),
+hr(),
+sliderInput("pts_years",
+            "scegli gli anni:",
+            min=1950,max=2018,
+            value=c(1950,2018)))
+
+    renderPlotly({
+  gg<-nbabasicstatistics1 %>% 
+     filter(year %in% seq(input$pts_years[1],input$pts_years[2])) %>% 
+     group_by(year,tm) %>% 
+     summarise(gp=unique(gp),
+              pts=sum(pts,na.rm=T)/gp,
+              `x2pa`=sum(`x2pa`,na.rm=T)/gp,
+                `x3pa`=sum(`x3pa`)/gp,
+                fta=sum(fta,na.rm=T)/gp)
+  
+     if (input$pts_teams=="All"){
+       gg<-gg %>% 
+      # summarise(pts=mean(pts,na.rm=T)) %>% 
+         summarise_at(vars(pts,`x2pa`,`x3pa`,fta),mean,na.rm=TRUE) %>% 
+         ungroup()
+       }
+     else {
+       gg<-gg %>% 
+         ungroup() %>% 
+      filter(tm==input$pts_teams)
+     }
+  
+  gg<-gg %>% 
+      gather("type","value",pts,`x2pa`,`x3pa`,fta) 
+      
+      validate(
+         need(nrow(gg)>1,"no data available for that team in those years")
+          ) 
+      
+      gg<-gg %>% 
+        ggplot(aes(year,value,color=type))+
+        geom_line()+
+        scale_x_continuous(breaks= seq(input$pts_years[1],input$pts_years[2],by=4))+
+        scale_y_continuous(breaks=seq(10,120,by=10))+
+        xlab("Anni")+
+        ylab("Numero medio di punti e tentativi di tiro per partita")+
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+    
+  ggplotly(gg)
+})
+```
+
+Si nota innanzitutto la forte correlazione positiva tra punti per gara e tiri da due punti tentati per gara fino al 1980 circa, anno in cui è stato introdotto il tiro da tre punti.
+
+Infatti dal 1980 il numero di tentativi di tiri da due punti è diminuito in modo significativo (di ~30 tentativi per gara), in quanto è stato soppiantato dall'aumento vertiginoso nei tentativi di tiro da tre punti (da ~2 tentativi nel 1982 a ~29 tentativi nel 2018)
+
+Per quanto riguarda il punteggio per gara, si osserva in particolare che:
+
+* i livelli minimi di punteggio per gara si sono avuti negli anni cinquanta (minimo assoluto nel 1954) fino al 1955, quando è stata introdotta la regola dei 24 secondi.
+
+  In particolare, questa regola sancisce che una squadra ha 24 secondi per segnare un canestro, al termine dei quali la palla passa obbligatoriamente agli avversari.
+
+  Di conseguenza: 
+
+    + prima che questa regola venisse introdotta, le squadre potevano tenere la palla senza limiti di tempo, non avevano obblighi di tiro e il gioco era molto lento
+
+      Un caso curioso è rappresentato dalla partita del 22/11/1950 tra Minneapolis Lakers e Fort Wayne Pistons, vinta da questi ultimi per 19-18
+
+    + dopo l'entrata in vigore della regola, le squadre sono state forzate a tirare, pena la perdita del possesso palla, quindi si è velocizzato il gioco e aumentato il numero di punti per gara
+
+* i livelli massimi si sono avuti negli anni sessanta: il gioco era prettamente offensivo come è testimoniato dal numero medio di tentativi di tiro per gara: ~100 tiri tentati per partita.
+
+  Inoltre in questi anni si sono avuti:
+  
+  + il massimo di punti in una gara per un giocatore, 100, da parte di **Wilt Chamberlain**
+    
+  + il massimo di rimbalzi in una gara per un giocatore, 55, da parte sempre di **Wilt Chamberlain**
+  
+* negli anni settanta c'è stata una diminuzione dei punti segnati: probabilmente a causa della presenza della **American Basketball Association**, o **ABA**, dal 1967 al 1976, nella quale hanno militato, invece che nella NBA, alcuni giocatori eccellenti come **Julius Erving**
+
+* negli anni ottanta, il livello dei punti segnati è risalito durante l'era dello **ShowTime** dei **Los Angeles Lakers** di **Magic Johnson** e **Kareem Abdul Jabbar** e dei **Boston Celtics** di **Larry Bird**
+
+* negli anni novanta, il punteggio medio per gara è diminuito di oltre 10 punti perché in questi anni il gioco è diventato molto più difensivo e fisico.
+
+  Sono emblematici di questo trend i **Detroit Pistons**, denominati anche **Bad Boys**
+
+* Nel 1999 si è avuto il secondo minimo in quanto c'è stato l'**NBA Lookout**, ovvero i giocatori non avevano la garanzia contrattuale di essere stipendiati in quell'anno e, di conseguenza, le loro prestazioni sono peggiorate.
+
+* nel primo decennio degli anni duemila, il trend è rimasto stazionario
+
+* nel decennio attuale, il numero medio di punti per gara sta risalendo velocemente: la causa principale di ciò risiede nell'aumento esponenziale dei tiri da tre punti
+
+***
+
+### precisione al tiro
+```{r precision}
+inputPanel(
+selectizeInput("throws_precision_teams",
+                          "scegli le squadre:",
+                        choices=append(teams$team,"All",after=0),
+                        selected="All"),
+hr(),
+sliderInput("throws_precision_years",
+            "scegli gli anni:",
+            min=1950,max=2018,
+            value=c(1950,2018),
+            sep=""))
+
+renderPlotly({
+    if (input$throws_precision_teams=="All")
+    {
+      gg<-nbabasicstatistics1 %>% 
+          filter(year %in% seq(input$throws_precision_years[1],input$throws_precision_years[2])) %>% 
+         group_by(year) %>% 
+         summarise(`x3p%`=sum(`x3p`,na.rm=T)/sum(`x3pa`,na.rm=T),
+                    `x2p%`=sum(`x2p`,na.rm=T)/sum(`x2pa`,na.rm=T),
+                    `ft%`=sum(ft,na.rm=T)/sum(fta,na.rm=T)) %>% 
+         ungroup() %>% 
+         gather("type","value",`x2p%`,`x3p%`,`ft%`) 
+    }
+  else
+  {
+      gg<-nbastatistics1 %>% 
+          filter(year %in% seq(input$throws_precision_years[1],input$throws_precision_years[2]), 
+                tm==input$throws_precision_teams) %>% 
+         group_by(year) %>% 
+          summarise(`x3p%`=sum(`x3p`,na.rm=T)/sum(`x3pa`,na.rm=T),
+                    `x2p%`=sum(`x2p`,na.rm=T)/sum(`x2pa`,na.rm=T),
+                    `ft%`=sum(ft,na.rm=T)/sum(fta,na.rm=T)) %>% 
+         ungroup() %>% 
+         gather("type","value",`x2p%`,`x3p%`,`ft%`) 
+  }
+      validate(
+        need(nrow(gg)>1,"no data available for that team in those years")
+      )
+
+   gg<-gg %>%
+          ggplot(aes(year,value,color=type)) +
+          geom_line()+
+          scale_x_continuous(breaks= seq(input$pts_years[1],input$pts_years[2],by=4))+
+          scale_y_continuous(breaks=seq(0.2,0.8))+
+          xlab("Anni")+
+          ylab("Precisione media al tiro")+
+          theme(axis.text.x=element_text(angle=45, hjust=1))
+   
+  ggplotly(gg)
+})
+```
+
+Si vede che:
+
+1. la precisione ai tiri liberi si mantiene stazionaria intorno al 75%
+
+2. la precisione ai tiri da due punti è migliorata nel corso degli anni, partendo dal 35% negli anni cinquanta e arrivando a stabilizzarsi intorno al 50% negli anni duemila
+
+3. la precisione nei tiri da tre punti è aumentata di molto, partendo dal 25% nei primi anni ottanta, arrivando al 35% a fine anni novanta e di lì stabilizzandosi su quel livello.
+Ciò è dovuto probabilmente alla presenza di sempre più giocatori specializzati nel tiro da tre punti, come **Reggie Miller** e **Ray Allen**
+
+***
+
+## Assist
+
+```{r assist}
+inputPanel(
+selectizeInput("ast_teams",
+            "scegli le squadre:",
+            choices=append(teams$team,"All",after=0),
+            selected="All"),
+hr(),
+sliderInput("ast_years",
+            "scegli gli anni:",
+            min=1950,max=2018,
+            value=c(1950,2018)))
+
+renderPlotly({
+  gg<-nbabasicstatistics1 %>% 
+     filter(year %in% seq(input$ast_years[1],input$ast_years[2])) %>% 
+     group_by(year,tm) %>% 
+     summarise(gp=unique(gp),
+              ast=sum(ast)/gp)
+  
+     if (input$ast_teams=="All"){
+       gg<-gg %>% 
+      summarise(ast=mean(ast,na.rm=T)) %>% 
+         ungroup()
+       }
+     else {
+       gg<-gg %>% 
+         ungroup() %>% 
+      filter(tm==input$ast_teams)
+     }
+      
+      validate(
+         need(nrow(gg)>1,"no data available for that team in those years")
+          ) 
+
+       gg<-gg %>%
+         ggplot(aes(year,ast))+
+         geom_point()+
+         scale_x_continuous(breaks= seq(input$ast_years[1],input$ast_years[2],by=4))+
+         scale_y_continuous(breaks=seq(18,26,by=1))+
+         # ggtitle(str_c("avg assists per game per ", ... = ifelse(input$pts_teams=="All","Lega",input$pts_teams)))+
+        xlab("Anni")+
+        ylab("Numero medio di assist per partita")+
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+
+   ggplotly(gg)
+})
+```
+
+Si nota che:
+
+* nei primi tre decenni (anni cinquanta, sessanta e settanta), il numero medio di assist per gara è molto variabile
+
+* il livello massimo di assist per gara si osserva negli anni ottanta, epoca in cui giocarono i due migliori assistmen nella storia dell'NBA: **John Stockton** e **Magic Johnson**
+
+* negli anni novanta il numero medio di assist è diminuito
+
+* nei primi anni duemila è rimasto stabile intorno ai ~21 assist per partita
+
+* a partire dal 2010 sta risalendo di nuovo
+
+***
+
+## Rimbalzi
+
+```{r rebounds}
+inputPanel(
+selectizeInput("rebounds_teams",
+               "scegli le squadre:",
+               choices=append(teams$team,"All",after=0),
+               selected="All"),
+hr(),
+sliderInput("rebounds_years",
+            "scegli gli anni:",
+            min=1974,
+            max=2018,
+            value=c(1974,2018)))
+
+renderPlotly({
+   gg<-nbastatistics1 %>%
+      filter(year %in% seq(input$rebounds_years[1],input$rebounds_years[2])) %>%  
+             # !(is.na(`x2pa`) | is.na(`x3pa`) | is.na(fta))) %>%
+      group_by(year,tm) %>% 
+      summarise(gp=unique(gp),
+                drb=sum(drb)/gp,
+                orb=sum(orb)/gp)
+   
+     if (input$rebounds_teams=="All"){
+       gg<-gg %>% 
+      summarise_at(vars(drb,orb),mean,na.rm=T) %>% 
+         ungroup()
+       }
+     else {
+       gg<-gg %>% 
+         ungroup() %>% 
+      filter(tm==input$rebounds_teams)
+     }
+ 
+       gg<-gg %>% 
+         gather("type","value",drb,orb) 
+       
+       validate(
+         need(nrow(gg)>1,"no data available for that team in those years")
+       )
+      
+       gg<-gg %>% 
+        ggplot(aes(year,value,color=type))+
+        geom_line()+
+         xlab("Anni")+
+         ylab("Numero medio di rimbalzi per partita")+
+        scale_x_continuous(breaks= seq(input$rebounds_years[1],input$rebounds_years[2],by=4))+
+         scale_y_continuous(breaks=seq(10,35))
+        theme(axis.text.x=element_text(angle=45, hjust=1))
+      
+      ggplotly(gg)
+})
+```
+
+Si nota la progressiva diminuzione dei rimbalzi offensivi.
+
+Probabilmente una causa di ciò è l'avvento del tiro da tre punti: infatti il tiro da tre punti ha velocizzato il gioco e i "Centri" che, tendenzialmente, sono gli ultimi ad arrivare e posizionarsi nella metà campo offensiva, non hanno più il tempo di farlo in quanto devono subito tornare nella metà campo difensiva.
+
+***
+
+# Un modello per prevedere la probabilità che una squadra vinca una partita, condizionatamente ai valori riportati da quella squadra nelle statistiche di base
+
+Nel seguito si stimerà per ogni squadra un modello di regressione logistica per calcolare la probabilità che quella squadra vinca una partita nella stagione 2017-2018 sulla base dei valori riportati dalla squadra nelle statistiche di base.
+
+Per stimare il modello si sfrutteranno:
+
+* per la variabile dipendente (indicatore di successo in una partita), la serie storica delle percentuali di partite vinte su partite giocate per le stagioni disputate dalla squadra
+
+* per le variabili esplicative, la serie storica delle statistiche di base medie per gara per le stagioni disputate dalla squadra
+
+E' da intendersi che questo modello considera solo la serie storica delle statistiche di base, mentre un modello ottimale dovrebbe prendere in considerazione altre importanti variabili esplicative, tra cui le seguenti:
+
+* la serie storica dei dati (statistiche di base e avanzate) relativi ai giocatori che militano nella squadra di interesse nella stagione 2017-2018
+
+* la serie storica dei dati relativi all'allenatore della squadra di interesse nella stagione 2017-2018
+
+Si pone un vincolo al modello: per la stima, non si considerano dati relativi ad anni anteriori al 1980, in modo da non avere dati mancanti.
+Infatti il 1980 è il primo anno di misurazione della statistica di base più recente: il tiro da tre punti.
+
+```{r summ_data}
+# preparazione dei dati
+
+summ_nbastatistics1<-nbastatistics1 %>% 
+                    group_by(year,tm) %>% 
+                    summarise(gp=unique(gp),
+                              fg=sum(fg)/gp,
+                              fga=sum(fga)/gp,
+                              fgpercent=round(ifelse(is.nan(fg/fga),0,fg/fga),2),
+                              `x3p`=sum(`x3p`)/gp,
+                              `x3pa`=sum(`x3pa`)/gp,
+                          `x3ppercent`=round(ifelse(is.nan(`x3p`/`x3pa`),0,`x3p`/`x3pa`),2),
+                              `x2p`=sum(`x2p`)/gp,
+                              `x2pa`=sum(`x2pa`)/gp,
+                              `x2ppercent`=round(ifelse(is.nan(`x2p`/`x2pa`),0,`x2p`/`x2pa`),2),
+                          efgpercent=round(ifelse(is.nan((fg+0.5*`x3p`)/fga),0,(fg+0.5*`x3p`)/fga),2),
+                              ft=sum(ft)/gp,
+                              fta=sum(fta)/gp,
+                              ftpercent=round(ifelse(is.nan(ft/fta),0,ft/fta),2),
+                              orb=sum(orb)/gp,
+                              drb=sum(drb)/gp,
+                              trb=sum(trb)/gp,
+                              ast=sum(ast)/gp,
+                              stl=sum(stl)/gp,
+                              blk=sum(blk)/gp,
+                              pf=sum(pf)/gp,
+                              pts=sum(pts)/gp,
+                              tov=sum(tov)/gp) %>% 
+                    ungroup() %>% 
+                    left_join(select(teamshistory,Year,Franchise,W,L,`W/L%`),
+                              by=c("year"="Year","tm"="Franchise")) %>% 
+                    filter(year>=1980)
+
+
+```
+
+
+## Correlazione tra le variabili
+Innanzitutto visualizziamo la correlazione tra le variabili.
+
+Di default si visualizza la correlazione tra le variabili calcolate su un'ipotetica squadra "media" della lega:
+
+```{r corrplot}
+selectizeInput("team_corr",
+               "scegli la franchigia:",
+               choices=append(teams$team,"All",after=0),
+               selected="All")
+
+renderPlot({
+  if (input$team_corr=="All"){
+    gg_cor<-summ_nbastatistics1 %>% 
+  group_by(year) %>% 
+  summarise_at(vars(-tm,-gp),mean,na.rm=T) %>% 
+  ungroup() %>% 
+    select(-year) %>% 
+  cor()
+  }
+  else
+  {
+    gg_cor<-summ_nbastatistics1 %>% 
+    filter(tm==input$team_corr) %>% 
+    select(-c(year,tm,gp)) %>% 
+    cor()
+  }
+  
+  corrplot::corrplot(gg_cor,type="upper",method="ellipse")
+})
+
+```
+
+Si osserva che:
+
+* oltre alle ovvie correlazioni tra:
+
+  + fg, fga e fgpercent
+  + x3p, x3pa e x3ppercent
+  + x2p, x2pa e x2ppercent
+  + ft, fta e ftpercent
+  + drb e trb
+  + orb e trb
+  
+* c'è una correlazione interessante tra: 
+
+  + ft,fta,x2p,x2pa e orb
+  + pf e orb (in quanto un giocatore, dopo aver perso palla, per evitare una transizione rapida degli avversari e un probabile canestro, preferisce commettere fallo per arrestare il gioco)
+  + orb e x3p,x3pa (come si accennava già nel paragrafo sui rimbalzi)
+  + ast e pts (più sono i passaggi che mettono i giocatori nelle condizioni di segnare, maggiori saranno i punti segnati)
+  + ast/fg e tov (in quanto un maggior movimento di palla aumenta il rischio di perdere la palla)
+  + W/L% e x2p, x2pa,x3p, x3pa
+  + fta e pf (si fa riferimento ai falli commessi su tiri oppure ai falli eccedenti il numero concesso alle squadre per tempo, ovvero 6)
+  + x3p, x3pa e ft,fta (maggiori sono i tentativi di tiri da tre, maggiori saranno i falli nella speranza di bloccarli e quindi i tiri liberi concessi)
+
+## Il modello {.tabset}
+
+Come si vede dal grafico della matrice di correlazione, le variabili esplicative:
+
+* sono numerose
+
+* sono spesso correlate
+
+Pertanto, si è usato il criterio dell'**AIC** per la selezione del modello migliore:
+
+$\text{AIC}(\text{model})=−2\text{loglikelihood}(\text{model})+2*n_{\text{model}}$
+
+```{r mode_function}
+ glm_mod<-function(x){
+  dats<-select(x,-year,-gp,-`W/L%`) #-tm
+  md<-glm(cbind(W,L)~.,data=dats,family=binomial())
+  md_AIC<-MASS::stepAIC(md,direction="both",trace=FALSE)
+  return(md_AIC)
+}
+
+model<-function(team){
+  model_dataset<-summ_nbastatistics1  %>% 
+                    filter(tm==team) %>% 
+                    select(-tm)
+  
+    model_dataset_train<-model_dataset %>% 
+      filter(year < 2018)
+
+    coeff<- glm_mod(model_dataset_train)$coefficients %>% 
+      exp() %>% 
+      round(3) %>% 
+      as.data.frame()
+    
+    return(coeff)
+}
+```
+
+### Interpretazione dell'effetto stimato dal modello
+
+Definito l'**odds** di una probabilità p:
+
+  - $\text{odds}(p)=\frac{p}{1-p}$,
+
+nel modello di regressione logistica si interpretano i coefficienti stimati (e opportunamente trasformati) come effetti medi di una variazione unitaria in una delle variabili esplicative (tenendo costanti tutte le altre) sull' **odds ratio** tra la probabilità di vincere una partita dopo la variazione unitaria in quella variabile esplicativa e la probabilità di vincere una partita senza la variazione unitaria in quella variabile esplicativa. In particolare:
+
+  - $\frac{\text{odds}(P(y_i=1|x_i+1))}{\text{odds}(P(y_i=1|x_i))}=\exp{(\beta_1)}$
+
+In quest'ottica possiamo mettere in evidenza, squadra per squadra, per quali statistiche di base, una variazione unitaria di esse incrementa maggiormente l'odds della probabilità di vincere una partita dopo quella variazione unitaria rispetto all'odds della probabilità di vincere una partita senza quella variazione unitaria e quindi individuare dei "punti di forza" per quella squadra e, di conseguenza, la probabilità stessa di vincere una partita dopo quella variazione unitaria rispetto alla probabilità di vincere una partita senza quella variazione unitaria.
+
+Poiché le statistiche di base sono rilevazioni statistiche di azioni e strategie di gioco (un tiro, un rimbalzo, ...), il modello cerca di capire, per una determinata squadra, quali siano le azioni/strategie di gioco che maggiormente contribuiscono alla vittoria di una partita.
+
+```{r interpretation}
+selectizeInput("model_team",
+                 "scegli la franchigia da modellare:",
+                 choices=teams$team,
+                 selected="GSW")
+
+renderDataTable({
+  model(input$model_team) %>% 
+    datatable(colnames = c("statistica di base", "effetto"),
+              options=list( scrollX=T,
+                           # fixedColumns=T,
+                             pageLength = 5,
+                             lengthChange = FALSE))
+})
+
+```
+
+Per esempio, per i **Golden State Warriors**, in una partita della stagione 2017-2018:
+
+* segnare un tiro da tre punti rende l'odds della probabilità di vincere la partita dopo aver tentato il tiro da due o tre punti 3.745 volte maggiore dell'odds di vincere la partita senza aver segnato il tiro da tre punti
+
+* i "punti di forza" sono:
+
+  + x3p: tiri da tre punti segnati
+  + x2p: tiri da due punti segnati
+  + drb: rimbalzi difensivi
+  + stl: palle recuperate
+  
+Al contrario, per i **Chicago Bulls**, in una partita della stagione 2017-2018:
+
+* segnare un tiro libero rende l'odds della probabilità di vincere la partita dopo aver tentato il tiro da due o tre punti 2.424 volte maggiore dell'odds di vincere la partita senza aver segnato il tiro da tre punti
+
+* i "punti di forza" sono:
+
+  + ft: tiri liberi segnati
+  + fg: tiri da due o tre punti segnati
+  + x3p: tiri da tre punti segnati
+  + trb: rimbalzi totali
+  
+In conclusione, per ciascuna squadra, il modello si propone di:
+
+1. individuare le azioni/strategie di gioco da attuare per vincere una partita
+
+2. prevedere la probabilità di vincere una partita sulla base delle storia statistica passata della squadra
+
+***
+
+### Previsioni del modello 
+
+```{r predictions}
+ training_set<-summ_nbastatistics1 %>% 
+   arrange(tm) %>% 
+   filter(year < 2018) %>% 
+   nest(-tm)
+
+ test_set<-summ_nbastatistics1 %>%
+   arrange(tm) %>%
+   filter(year == 2018) %>%
+   nest(-tm)
+
+ training_set<-training_set %>%
+   mutate(model=purrr::map(data,glm_mod))
+
+ test_set$model<-training_set$model
+
+ test_set<-test_set %>%
+   mutate(pred=map2(model,data,predict.glm,type="response") %>% unlist()) %>%
+   select(tm,pred) %>%
+   mutate(year=2018)
+
+summ_nbastatistics1_2018<-summ_nbastatistics1 %>%
+  filter(year==2018) %>%
+  select(tm,`W/L%`)
+
+test_set<-test_set %>%
+  left_join(summ_nbastatistics1_2018,by="tm") %>%
+  select(year,tm,`W/L%`,pred) %>%
+  mutate(pred=round(pred,3))
+
+datatable(test_set,
+          options=list( rownames=F,
+                        scrollX=T,
+                           # fixedColumns=T,
+                             pageLength = 10,
+                             lengthChange = FALSE))
+  
+```
+
+A fini previsivi, il modello è discreto per le ragioni menzionate all'inizio della sezione.
+
+In conclusione, per ciascuna squadra, il modello si propone di:
+
+1. individuare le azioni/strategie di gioco da attuare per vincere una partita
+
+2. prevedere la probabilità di vincere una partita sulla base delle storia statistica passata della squadra
+
+***
+
+# Conclusioni
+
+Con questa analisi si è voluto:
+
+* analizzare, attraverso quasi settant'anni di storia della NBA, le performance di:
+
+  + giocatori, statunitensi e non
+  + squadre 
+  
+che vi hanno militato.
+
+* studiare l'evoluzione del gioco della pallacanestro in questa lega sportiva
+
+* stimare un modello che, a partire dalla storia statistica passata di una squadra, cerchi di:
+
+  + prevedere la probabilità di vincere una partita in una stagione regolare per quella squadra
+  + individuare le azioni/strategie di gioco più utili a quella squadra per vincere una partita
+
+Naturalmente, si è consapevoli che questa analisi non riesce a prendere in considerazione tutte le innumerevoli sfaccettature del campionato NBA, bensì vorrebbe essere un punto di partenza per studi più approfonditi.
+
+Grazie, 
+
+Gabriele
